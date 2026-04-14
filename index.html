@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastPhoto Pro - Color Grading</title>
+    <title>FastPhoto Pro - Ultimate</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#1e1e1e">
     <link rel="stylesheet" href="/src/style.css">
@@ -11,8 +11,13 @@
 <body>
     <header class="top-bar">
         <h1>FastPhoto <span>PRO</span></h1>
-        <label for="upload-btn" class="custom-upload-btn">Apri Foto</label>
-        <input type="file" id="upload-btn" accept="image/*">
+        
+        <div class="top-controls">
+            <button id="undo-btn" class="icon-btn" title="Annulla">↩️</button>
+            <button id="redo-btn" class="icon-btn" title="Ripristina">↪️</button>
+            <label for="upload-btn" class="custom-upload-btn">Apri Foto</label>
+            <input type="file" id="upload-btn" accept="image/*">
+        </div>
     </header>
 
     <div class="app-container">
@@ -22,38 +27,50 @@
         </main>
 
         <aside class="side-panel">
-            <h2>Color Grading</h2>
+            <div class="histogram-container">
+                <canvas id="hist-canvas" width="310" height="100"></canvas>
+            </div>
 
+            <h2>Aggiungi Testo</h2>
+            <div class="text-tool">
+                <input type="text" id="watermark-text" placeholder="Scrivi la tua firma...">
+                <input type="color" id="watermark-color" value="#ffffff">
+                <button id="text-btn" class="btn action" title="Clicca qui e poi clicca sulla foto">✍️</button>
+            </div>
+
+            <h2>Filtri Rapidi</h2>
+            <div class="presets-row">
+                <button class="preset-btn" data-preset="normal">Normale</button>
+                <button class="preset-btn" data-preset="vintage">Vintage</button>
+                <button class="preset-btn" data-preset="cinematic">Film</button>
+                <button class="preset-btn" data-preset="bw">B/N Pro</button>
+            </div>
+
+            <h2>Sviluppo RAW</h2>
             <div class="slider-group">
                 <div class="slider-header"><label>🌡 Temperatura</label><span id="temp-val">0</span></div>
                 <input type="range" id="temp-slider" min="-50" max="50" value="0">
             </div>
-
             <div class="slider-group">
                 <div class="slider-header"><label>🧪 Tinta</label><span id="tint-val">0</span></div>
                 <input type="range" id="tint-slider" min="-50" max="50" value="0">
             </div>
-
             <div class="slider-group">
                 <div class="slider-header"><label>☀️ Esposizione</label><span id="exposure-val">0</span></div>
                 <input type="range" id="exposure-slider" min="-100" max="100" value="0">
             </div>
-
             <div class="slider-group">
                 <div class="slider-header"><label>🌗 Contrasto</label><span id="contrast-val">0</span></div>
                 <input type="range" id="contrast-slider" min="-100" max="100" value="0">
             </div>
-
             <div class="slider-group">
-                <div class="slider-header"><label>🌑 Recupero Ombre</label><span id="shadows-val">0</span></div>
+                <div class="slider-header"><label>🌑 Ombre</label><span id="shadows-val">0</span></div>
                 <input type="range" id="shadows-slider" min="-100" max="100" value="0">
             </div>
-
             <div class="slider-group">
-                <div class="slider-header"><label>💡 Recupero Luci</label><span id="highlights-val">0</span></div>
+                <div class="slider-header"><label>💡 Luci</label><span id="highlights-val">0</span></div>
                 <input type="range" id="highlights-slider" min="-100" max="100" value="0">
             </div>
-
             <div class="slider-group">
                 <div class="slider-header"><label>🎨 Saturazione</label><span id="saturation-val">100%</span></div>
                 <input type="range" id="saturation-slider" min="0" max="200" value="100">
