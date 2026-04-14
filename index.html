@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastPhoto Pro</title>
+    <title>FastPhoto Pro - Color Grading</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#1e1e1e">
     <link rel="stylesheet" href="/src/style.css">
@@ -22,35 +22,48 @@
         </main>
 
         <aside class="side-panel">
-            <h2>Regolazioni</h2>
+            <h2>Color Grading</h2>
 
             <div class="slider-group">
-                <div class="slider-header"><label>Luminosità</label><span id="brightness-val">100%</span></div>
-                <input type="range" id="brightness-slider" min="0" max="200" value="100">
+                <div class="slider-header"><label>🌡 Temperatura</label><span id="temp-val">0</span></div>
+                <input type="range" id="temp-slider" min="-50" max="50" value="0">
             </div>
 
             <div class="slider-group">
-                <div class="slider-header"><label>Contrasto</label><span id="contrast-val">100%</span></div>
-                <input type="range" id="contrast-slider" min="0" max="200" value="100">
+                <div class="slider-header"><label>🧪 Tinta</label><span id="tint-val">0</span></div>
+                <input type="range" id="tint-slider" min="-50" max="50" value="0">
             </div>
 
             <div class="slider-group">
-                <div class="slider-header"><label>Saturazione</label><span id="saturation-val">100%</span></div>
+                <div class="slider-header"><label>☀️ Esposizione</label><span id="exposure-val">0</span></div>
+                <input type="range" id="exposure-slider" min="-100" max="100" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>🌗 Contrasto</label><span id="contrast-val">0</span></div>
+                <input type="range" id="contrast-slider" min="-100" max="100" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>🌑 Recupero Ombre</label><span id="shadows-val">0</span></div>
+                <input type="range" id="shadows-slider" min="-100" max="100" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>💡 Recupero Luci</label><span id="highlights-val">0</span></div>
+                <input type="range" id="highlights-slider" min="-100" max="100" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>🎨 Saturazione</label><span id="saturation-val">100%</span></div>
                 <input type="range" id="saturation-slider" min="0" max="200" value="100">
             </div>
 
-            <div class="slider-group">
-                <div class="slider-header"><label>Filtro Vintage</label><span id="sepia-val">0%</span></div>
-                <input type="range" id="sepia-slider" min="0" max="100" value="0">
-            </div>
-
-            <div class="slider-group">
-                <div class="slider-header"><label>Sfocatura</label><span id="blur-val">0px</span></div>
-                <input type="range" id="blur-slider" min="0" max="20" value="0">
-            </div>
-
             <div class="action-buttons">
-                <button id="crop-btn" class="btn action">✂️ Taglia Foto</button>
+                <div class="btn-row">
+                    <button id="crop-btn" class="btn action">✂️ Taglia</button>
+                    <button id="rotate-btn" class="btn action">🔄 Ruota</button>
+                </div>
                 <div class="btn-row">
                     <button id="reset-btn" class="btn reset">🔄 Resetta</button>
                     <button id="download-btn" class="btn download">⬇️ Esporta</button>
