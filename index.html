@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastPhoto Pro - Ultimate</title>
+    <title>FastPhoto Pro - Ultimate Layers</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#1e1e1e">
     <link rel="stylesheet" href="/src/style.css">
@@ -15,15 +15,22 @@
         <div class="top-controls">
             <button id="undo-btn" class="icon-btn" title="Annulla">↩️</button>
             <button id="redo-btn" class="icon-btn" title="Ripristina">↪️</button>
-            <label for="upload-btn" class="custom-upload-btn">Apri Foto</label>
+            <label for="upload-btn" class="custom-upload-btn">Apri Sfondo</label>
             <input type="file" id="upload-btn" accept="image/*">
         </div>
     </header>
 
     <div class="app-container">
-        <main class="editor-workspace">
+        <main class="editor-workspace" id="workspace">
             <canvas id="photo-canvas"></canvas>
-            <div id="no-photo-msg">Carica una foto per iniziare</div>
+            <div id="no-photo-msg">Carica un'immagine per iniziare</div>
+            
+            <div class="zoom-controls">
+                <button id="zoom-out" class="icon-btn">➖</button>
+                <span id="zoom-val">100%</span>
+                <button id="zoom-in" class="icon-btn">➕</button>
+                <button id="zoom-fit" class="icon-btn" title="Adatta allo schermo">⛶</button>
+            </div>
         </main>
 
         <aside class="side-panel">
@@ -31,11 +38,39 @@
                 <canvas id="hist-canvas" width="310" height="100"></canvas>
             </div>
 
+            <div class="layers-section">
+                <h2>Livelli</h2>
+                <div id="layers-list" class="layers-list"></div>
+                <div class="layer-actions">
+                    <label for="add-layer-btn" class="btn action small-btn">➕ Aggiungi</label>
+                    <input type="file" id="add-layer-btn" accept="image/*" style="display:none;">
+                    <button id="del-layer-btn" class="btn action small-btn">🗑 Elimina</button>
+                </div>
+                
+                <div id="layer-settings" style="display: none; margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+                    <div class="slider-group">
+                        <div class="slider-header"><label>Opacità</label><span id="layer-opacity-val">100%</span></div>
+                        <input type="range" id="layer-opacity" min="0" max="100" value="100">
+                    </div>
+                    <div class="select-group" style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <label style="font-size: 0.85rem; color: #ccc;">Fusione</label>
+                        <select id="layer-blend" class="custom-select">
+                            <option value="source-over">Normale</option>
+                            <option value="multiply">Moltiplica</option>
+                            <option value="screen">Scolora</option>
+                            <option value="overlay">Sovrapponi</option>
+                            <option value="darken">Scurisci</option>
+                            <option value="lighten">Schiarisci</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <h2>Aggiungi Testo</h2>
             <div class="text-tool">
-                <input type="text" id="watermark-text" placeholder="Scrivi la tua firma...">
+                <input type="text" id="watermark-text" placeholder="Firma / Testo...">
                 <input type="color" id="watermark-color" value="#ffffff">
-                <button id="text-btn" class="btn action" title="Clicca qui e poi clicca sulla foto">✍️</button>
+                <button id="text-btn" class="btn action">✍️</button>
             </div>
 
             <h2>Filtri Rapidi</h2>
@@ -46,35 +81,19 @@
                 <button class="preset-btn" data-preset="bw">B/N Pro</button>
             </div>
 
-            <h2>Sviluppo RAW</h2>
-            <div class="slider-group">
-                <div class="slider-header"><label>🌡 Temperatura</label><span id="temp-val">0</span></div>
-                <input type="range" id="temp-slider" min="-50" max="50" value="0">
+            <h2>Sviluppo Sfondo</h2>
+            <div class="slider-group" style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #333;">
+                <div class="slider-header"><label style="color:#007aff; font-weight:bold;">🌟 Intensità Effetti</label><span id="effect-opacity-val">100%</span></div>
+                <input type="range" id="effect-opacity-slider" min="0" max="100" value="100">
             </div>
-            <div class="slider-group">
-                <div class="slider-header"><label>🧪 Tinta</label><span id="tint-val">0</span></div>
-                <input type="range" id="tint-slider" min="-50" max="50" value="0">
-            </div>
-            <div class="slider-group">
-                <div class="slider-header"><label>☀️ Esposizione</label><span id="exposure-val">0</span></div>
-                <input type="range" id="exposure-slider" min="-100" max="100" value="0">
-            </div>
-            <div class="slider-group">
-                <div class="slider-header"><label>🌗 Contrasto</label><span id="contrast-val">0</span></div>
-                <input type="range" id="contrast-slider" min="-100" max="100" value="0">
-            </div>
-            <div class="slider-group">
-                <div class="slider-header"><label>🌑 Ombre</label><span id="shadows-val">0</span></div>
-                <input type="range" id="shadows-slider" min="-100" max="100" value="0">
-            </div>
-            <div class="slider-group">
-                <div class="slider-header"><label>💡 Luci</label><span id="highlights-val">0</span></div>
-                <input type="range" id="highlights-slider" min="-100" max="100" value="0">
-            </div>
-            <div class="slider-group">
-                <div class="slider-header"><label>🎨 Saturazione</label><span id="saturation-val">100%</span></div>
-                <input type="range" id="saturation-slider" min="0" max="200" value="100">
-            </div>
+
+            <div class="slider-group"><div class="slider-header"><label>🌡 Temp.</label><span id="temp-val">0</span></div><input type="range" id="temp-slider" min="-50" max="50" value="0"></div>
+            <div class="slider-group"><div class="slider-header"><label>🧪 Tinta</label><span id="tint-val">0</span></div><input type="range" id="tint-slider" min="-50" max="50" value="0"></div>
+            <div class="slider-group"><div class="slider-header"><label>☀️ Esposiz.</label><span id="exposure-val">0</span></div><input type="range" id="exposure-slider" min="-100" max="100" value="0"></div>
+            <div class="slider-group"><div class="slider-header"><label>🌗 Contrast</label><span id="contrast-val">0</span></div><input type="range" id="contrast-slider" min="-100" max="100" value="0"></div>
+            <div class="slider-group"><div class="slider-header"><label>🌑 Ombre</label><span id="shadows-val">0</span></div><input type="range" id="shadows-slider" min="-100" max="100" value="0"></div>
+            <div class="slider-group"><div class="slider-header"><label>💡 Luci</label><span id="highlights-val">0</span></div><input type="range" id="highlights-slider" min="-100" max="100" value="0"></div>
+            <div class="slider-group"><div class="slider-header"><label>🎨 Saturaz.</label><span id="saturation-val">100%</span></div><input type="range" id="saturation-slider" min="0" max="200" value="100"></div>
 
             <div class="action-buttons">
                 <div class="btn-row">
@@ -92,3 +111,4 @@
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>
+
