@@ -3,30 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastPhoto PWA</title>
+    <title>FastPhoto Pro</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1e1e1e">
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
+    <header class="top-bar">
+        <h1>FastPhoto <span>PRO</span></h1>
+        <label for="upload-btn" class="custom-upload-btn">Apri Foto</label>
+        <input type="file" id="upload-btn" accept="image/*">
+    </header>
+
     <div class="app-container">
-        <header>
-            <h1>FastPhoto</h1>
-            <label for="upload-btn" class="custom-upload-btn">Carica Foto</label>
-            <input type="file" id="upload-btn" accept="image/*">
-        </header>
-
-        <section class="toolbar">
-            <button id="bw-btn" class="tool-btn">Bianco e Nero</button>
-            <button id="reset-btn" class="tool-btn reset">Resetta Foto</button>
-            
-            <div class="slider-container">
-                <label for="brightness-slider">Luminosità: <span id="brightness-val">0</span></label>
-                <input type="range" id="brightness-slider" min="-100" max="100" value="0">
-            </div>
-        </section>
-
         <main class="editor-workspace">
             <canvas id="photo-canvas"></canvas>
+            <div id="no-photo-msg">Carica una foto per iniziare</div>
         </main>
+
+        <aside class="side-panel">
+            <h2>Regolazioni</h2>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>Luminosità</label><span id="brightness-val">100%</span></div>
+                <input type="range" id="brightness-slider" min="0" max="200" value="100">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>Contrasto</label><span id="contrast-val">100%</span></div>
+                <input type="range" id="contrast-slider" min="0" max="200" value="100">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>Saturazione</label><span id="saturation-val">100%</span></div>
+                <input type="range" id="saturation-slider" min="0" max="200" value="100">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>Filtro Vintage</label><span id="sepia-val">0%</span></div>
+                <input type="range" id="sepia-slider" min="0" max="100" value="0">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-header"><label>Sfocatura</label><span id="blur-val">0px</span></div>
+                <input type="range" id="blur-slider" min="0" max="20" value="0">
+            </div>
+
+            <div class="action-buttons">
+                <button id="crop-btn" class="btn action">✂️ Taglia Foto</button>
+                <div class="btn-row">
+                    <button id="reset-btn" class="btn reset">🔄 Resetta</button>
+                    <button id="download-btn" class="btn download">⬇️ Esporta</button>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <script type="module" src="/src/main.js"></script>

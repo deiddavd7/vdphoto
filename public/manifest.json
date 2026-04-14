@@ -1,0 +1,17 @@
+{
+  "name": "FastPhoto Editor",
+  "short_name": "FastPhoto",
+  "description": "App di post-produzione super veloce per fotografi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#2d2d2d",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
