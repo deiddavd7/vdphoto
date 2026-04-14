@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastPhoto PWA</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>FastPhoto</h1>
+            <label for="upload-btn" class="custom-upload-btn">Carica Foto</label>
+            <input type="file" id="upload-btn" accept="image/*">
+        </header>
+
+        <section class="toolbar">
+            <button id="bw-btn" class="tool-btn">Bianco e Nero</button>
+            <button id="reset-btn" class="tool-btn reset">Resetta Foto</button>
+            
+            <div class="slider-container">
+                <label for="brightness-slider">Luminosità: <span id="brightness-val">0</span></label>
+                <input type="range" id="brightness-slider" min="-100" max="100" value="0">
+            </div>
+        </section>
+
+        <main class="editor-workspace">
+            <canvas id="photo-canvas"></canvas>
+        </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

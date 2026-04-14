@@ -1,0 +1,117 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: #1e1e1e; 
+    color: #ffffff;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #3d3d3d;
+}
+
+h1 {
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+input[type="file"] {
+    display: none;
+}
+
+.custom-upload-btn {
+    background-color: #007aff;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.custom-upload-btn:hover {
+    background-color: #0056b3;
+}
+
+.toolbar {
+    background-color: #222222;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid #3d3d3d;
+}
+
+.tool-btn {
+    background-color: #333333;
+    color: white;
+    border: 1px solid #555555;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.tool-btn:hover {
+    background-color: #444444;
+}
+
+.tool-btn.reset {
+    background-color: #5a2a2a; 
+    border-color: #7a3a3a;
+}
+
+.tool-btn.reset:hover {
+    background-color: #7a3a3a;
+}
+
+/* Stile per il nuovo contenitore dello slider */
+.slider-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin-left: 20px; /* Lo stacca un po' dai bottoni */
+    font-size: 0.85rem;
+    color: #cccccc;
+}
+
+/* Fa in modo che il puntatore diventi una manina quando tocchiamo la barra */
+.slider-container input[type="range"] {
+    margin-top: 5px;
+    cursor: pointer;
+}
+
+.editor-workspace {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    background-color: #121212;
+    overflow: auto; 
+}
+
+#photo-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
