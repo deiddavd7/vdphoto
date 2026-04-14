@@ -2,517 +2,329 @@ import './style.css';
 
 const workspace = document.getElementById('workspace');
 const canvas = document.getElementById('photo-canvas');
-const ctx = canvas.getContext('2d'); 
-const offscreenCanvas = document.createElement('canvas');
-const offCtx = offscreenCanvas.getContext('2d'); // Rimosso willReadFrequently per compatibilità Safari
+const ctx = canvas.getContext('2d');
+const offCanvas = document.createElement('canvas');
+const offCtx = offCanvas.getContext('2d');
 const histCanvas = document.getElementById('hist-canvas');
 const histCtx = histCanvas.getContext('2d');
 
+const zoomValDisp = document.getElementById('zoom-val');
 const noPhotoMsg = document.getElementById('no-photo-msg');
-const zoomValDisplay = document.getElementById('zoom-val');
 
-const cropBtn = document.getElementById('crop-btn');
-const rotateBtn = document.getElementById('rotate-btn');
-const textBtn = document.getElementById('text-btn');
-const undoBtn = document.getElementById('undo-btn');
-const redoBtn = document.getElementById('redo-btn');
-
+// --- STATO GLOBALE ---
+let layers = [];
+let activeLayerIndex = -1;
 let history = [];
 let historyIndex = -1;
+let scale = 1, panX = 0, panY = 0;
+let isPanning = false, isSpacePressed = false, isDraggingLayer = false, isCropDragging = false;
+let startPan = {x:0, y:0}, startCoords = {x:0, y:0}, currentCoords = {x:0, y:0}, startLayerPos = {x:0, y:0};
+let isCropMode = false, isTextMode = false;
 
+// Selettori Slider sicuri
+const s = {
+    sharp: document.getElementById('sharpness-slider'),
+    temp: document.getElementById('temp-slider'),
+    exp: document.getElementById('exposure-slider'),
+    cont: document.getElementById('contrast-slider'),
+    shadows: document.getElementById('shadows-slider'),
+    sat: document.getElementById('saturation-slider')
+};
+const v = {
+    sharp: document.getElementById('sharpness-val'),
+    temp: document.getElementById('temp-val'),
+    exp: document.getElementById('exposure-val'),
+    cont: document.getElementById('contrast-val'),
+    shadows: document.getElementById('shadows-val'),
+    sat: document.getElementById('saturation-val')
+};
+
+// --- STORIA ---
 function saveHistory() {
     if (layers.length === 0) return;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layers[0].w; 
-    tempCanvas.height = layers[0].h;
-    tempCanvas.getContext('2d').drawImage(layers[0].img, 0, 0);
-    
+    const state = layers.map(l => ({ ...l, imgData: l.img.src }));
     history = history.slice(0, historyIndex + 1);
-    history.push(tempCanvas.toDataURL());
+    history.push(JSON.stringify(state));
     historyIndex++;
 }
 
-if (undoBtn) undoBtn.addEventListener('click', () => {
-    if (historyIndex > 0) {
-        historyIndex--;
+document.getElementById('undo-btn').onclick = () => {
+    if (historyIndex > 0) { historyIndex--; loadHistoryState(); }
+};
+document.getElementById('redo-btn').onclick = () => {
+    if (historyIndex < history.length - 1) { historyIndex++; loadHistoryState(); }
+};
+
+async function loadHistoryState() {
+    const data = JSON.parse(history[historyIndex]);
+    const promises = data.map(l => new Promise(res => {
         const img = new Image();
-        img.onload = () => { layers[0].img = img; layers[0].w = img.width; layers[0].h = img.height; updateBaseFilters(); fitToScreen(); };
-        img.src = history[historyIndex];
-    }
-});
-
-if (redoBtn) redoBtn.addEventListener('click', () => {
-    if (historyIndex < history.length - 1) {
-        historyIndex++;
-        const img = new Image();
-        img.onload = () => { layers[0].img = img; layers[0].w = img.width; layers[0].h = img.height; updateBaseFilters(); fitToScreen(); };
-        img.src = history[historyIndex];
-    }
-});
-
-// --- SISTEMA LIVELLI ---
-let layers = [];
-let activeLayerIndex = -1;
-
-const layerSettingsPanel = document.getElementById('layer-settings');
-const layerOpacitySlider = document.getElementById('layer-opacity');
-const layerOpacityVal = document.getElementById('layer-opacity-val');
-const layerBlendSelect = document.getElementById('layer-blend');
-
-function addLayer(img, name) {
-    layers.push({
-        id: Date.now(),
-        name: name,
-        img: img,
-        x: layers.length === 0 ? 0 : (canvas.width/scale - img.width)/2, 
-        y: layers.length === 0 ? 0 : (canvas.height/scale - img.height)/2,
-        w: img.width,
-        h: img.height,
-        visible: true,
-        opacity: 1, 
-        blendMode: 'source-over' 
-    });
-    activeLayerIndex = layers.length - 1;
-    updateLayersUI();
-    
-    if(layers.length === 1) {
-        history = []; historyIndex = -1; saveHistory();
-        updateBaseFilters(); 
-    } else {
-        renderCanvas();
-    }
+        img.onload = () => { l.img = img; res(l); };
+        img.src = l.imgData;
+    }));
+    layers = await Promise.all(promises);
+    updateLayersUI(); updateBaseFilters();
 }
 
-function updateLayersUI() {
-    const list = document.getElementById('layers-list');
-    if (!list) return;
-    list.innerHTML = '';
-    layers.forEach((layer, index) => {
-        const div = document.createElement('div');
-        div.className = `layer-item ${index === activeLayerIndex ? 'active' : ''}`;
-        div.innerHTML = `
-            <span>${layer.name}</span>
-            <span class="layer-visibility" data-index="${index}">${layer.visible ? '👁️' : '🚫'}</span>
-        `;
-        div.onclick = (e) => {
-            if(e.target.classList.contains('layer-visibility')) {
-                layer.visible = !layer.visible;
-            } else {
-                activeLayerIndex = index;
+// --- ENGINE ---
+function applySharpen(data, w, h, amount) {
+    if (amount <= 0) return data;
+    const weights = [0, -amount, 0, -amount, 1 + amount * 4, -amount, 0, -amount, 0];
+    const out = new Uint8ClampedArray(data.length);
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            let r=0, g=0, b=0;
+            for (let cy=0; cy<3; cy++) {
+                for (let cx=0; cx<3; cx++) {
+                    const iy = Math.min(h-1, Math.max(0, y + cy - 1));
+                    const ix = Math.min(w-1, Math.max(0, x + cx - 1));
+                    const srcI = (iy * w + ix) * 4;
+                    const wt = weights[cy * 3 + cx];
+                    r += data[srcI] * wt; g += data[srcI+1] * wt; b += data[srcI+2] * wt;
+                }
             }
-            updateLayersUI();
-            renderCanvas();
-        };
-        list.appendChild(div);
-    });
-
-    if(layerSettingsPanel && activeLayerIndex > 0) {
-        layerSettingsPanel.style.display = 'block';
-        if (layerOpacitySlider) layerOpacitySlider.value = layers[activeLayerIndex].opacity * 100;
-        if (layerOpacityVal) layerOpacityVal.textContent = Math.round(layers[activeLayerIndex].opacity * 100) + '%';
-        if (layerBlendSelect) layerBlendSelect.value = layers[activeLayerIndex].blendMode;
-    } else if (layerSettingsPanel) {
-        layerSettingsPanel.style.display = 'none';
+            out[i]=r; out[i+1]=g; out[i+2]=b; out[i+3]=data[i+3];
+        }
     }
+    return out;
 }
-
-if (layerOpacitySlider) layerOpacitySlider.addEventListener('input', (e) => {
-    if(activeLayerIndex > 0) {
-        layers[activeLayerIndex].opacity = e.target.value / 100;
-        layerOpacityVal.textContent = e.target.value + '%';
-        renderCanvas();
-    }
-});
-
-if (layerBlendSelect) layerBlendSelect.addEventListener('change', (e) => {
-    if(activeLayerIndex > 0) {
-        layers[activeLayerIndex].blendMode = e.target.value;
-        renderCanvas();
-    }
-});
-
-const delBtn = document.getElementById('del-layer-btn');
-if (delBtn) delBtn.addEventListener('click', () => {
-    if (activeLayerIndex > 0) { 
-        layers.splice(activeLayerIndex, 1);
-        activeLayerIndex = layers.length - 1;
-        updateLayersUI();
-        renderCanvas();
-    } else {
-        alert("Non puoi eliminare il livello di Sfondo!");
-    }
-});
-
-// SEQUENZA DI CARICAMENTO CORAZZATA
-document.getElementById('upload-btn').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const img = new Image();
-            img.onload = () => {
-                // 1. Accendiamo l'interfaccia prima di fare calcoli
-                const zc = document.querySelector('.zoom-controls');
-                if (zc) zc.style.display = 'flex';
-                if (noPhotoMsg) noPhotoMsg.style.display = 'none';
-                canvas.style.display = 'block';
-                
-                // 2. Impostiamo le dimensioni corrette
-                canvas.width = workspace.clientWidth; 
-                canvas.height = workspace.clientHeight;
-                
-                // 3. Aggiungiamo il livello e calcoliamo i filtri
-                layers = []; 
-                addLayer(img, "Sfondo");
-                
-                // 4. Centriamo l'immagine
-                fitToScreen();
-            };
-            img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
-    // Resetta l'input per poter ricaricare la stessa foto se serve
-    e.target.value = "";
-});
-
-const addLayerBtn = document.getElementById('add-layer-btn');
-if (addLayerBtn) addLayerBtn.addEventListener('change', (e) => {
-    if(layers.length === 0) return alert("Carica prima uno sfondo!");
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const img = new Image();
-            img.onload = () => addLayer(img, `Livello ${layers.length}`);
-            img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
-    e.target.value = ""; 
-});
-
-// --- MOTORE SVILUPPO ---
-const effectOpacitySlider = document.getElementById('effect-opacity-slider');
-const effectOpacityVal = document.getElementById('effect-opacity-val');
-
-const s = { temp: document.getElementById('temp-slider'), tint: document.getElementById('tint-slider'), exp: document.getElementById('exposure-slider'), cont: document.getElementById('contrast-slider'), shadows: document.getElementById('shadows-slider'), highlights: document.getElementById('highlights-slider'), sat: document.getElementById('saturation-slider') };
-const v = { temp: document.getElementById('temp-val'), tint: document.getElementById('tint-val'), exp: document.getElementById('exposure-val'), cont: document.getElementById('contrast-val'), shadows: document.getElementById('shadows-val'), highlights: document.getElementById('highlights-val'), sat: document.getElementById('saturation-val') };
-
-function getSliderValue(slider, defaultVal) { return slider ? parseFloat(slider.value) : defaultVal; }
 
 function updateBaseFilters() {
     if (layers.length === 0) return;
-    const baseLayer = layers[0];
-    
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = baseLayer.w; tempCanvas.height = baseLayer.h;
-    const tCtx = tempCanvas.getContext('2d');
-    tCtx.drawImage(baseLayer.img, 0, 0);
-    
-    const imgData = tCtx.getImageData(0, 0, baseLayer.w, baseLayer.h);
-    const data = imgData.data;
+    const base = layers[0];
+    const tCanvas = document.createElement('canvas');
+    tCanvas.width = base.w; tCanvas.height = base.h;
+    const tCtx = tCanvas.getContext('2d');
+    tCtx.drawImage(base.img, 0, 0);
 
-    const temp = getSliderValue(s.temp, 0); 
-    const tint = getSliderValue(s.tint, 0); 
-    const exp = getSliderValue(s.exp, 0); 
-    const cont = getSliderValue(s.cont, 0); 
-    const shadows = getSliderValue(s.shadows, 0); 
-    const highlights = getSliderValue(s.highlights, 0); 
-    const sat = getSliderValue(s.sat, 100) / 100;
+    let imgData = tCtx.getImageData(0, 0, base.w, base.h);
+    let data = imgData.data;
+
+    const temp = parseInt(s.temp?.value || 0);
+    const exp = parseInt(s.exp?.value || 0);
+    const cont = parseInt(s.cont?.value || 0);
+    const shadows = parseInt(s.shadows?.value || 0);
+    const sat = parseInt(s.sat?.value || 100) / 100;
+    const sharp = parseInt(s.sharp?.value || 0) / 100;
     
     const factor = (259 * (cont + 255)) / (255 * (259 - cont));
 
     for (let i = 0; i < data.length; i += 4) {
-        let r = data[i]; let g = data[i+1]; let b = data[i+2];
-        r += temp; b -= temp; g += tint; r += exp; g += exp; b += exp;
-        r = factor * (r - 128) + 128; g = factor * (g - 128) + 128; b = factor * (b - 128) + 128;
-        r = Math.min(255, Math.max(0, r)); g = Math.min(255, Math.max(0, g)); b = Math.min(255, Math.max(0, b));
-        let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (shadows !== 0 && lum < 128) { let sm = (128 - lum) / 128; r += shadows * sm; g += shadows * sm; b += shadows * sm; }
-        if (highlights !== 0 && lum > 128) { let hm = (lum - 128) / 127; r -= highlights * hm; g -= highlights * hm; b -= highlights * hm; }
-        lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        r = lum + (r - lum) * sat; g = lum + (g - lum) * sat; b = lum + (b - lum) * sat;
-        data[i] = r; data[i+1] = g; data[i+2] = b;
+        data[i] += temp + exp; data[i+1] += exp; data[i+2] += exp - temp;
+        data[i] = factor * (data[i] - 128) + 128;
+        data[i+1] = factor * (data[i+1] - 128) + 128;
+        data[i+2] = factor * (data[i+2] - 128) + 128;
+        let lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+        if (lum < 128) { let m = (128-lum)/128; data[i]+=shadows*m; data[i+1]+=shadows*m; data[i+2]+=shadows*m; }
+        lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+        data[i]=lum+(data[i]-lum)*sat; data[i+1]=lum+(data[i+1]-lum)*sat; data[i+2]=lum+(data[i+2]-lum)*sat;
     }
+
+    if (sharp > 0) { const sharpened = applySharpen(data, base.w, base.h, sharp); imgData.data.set(sharpened); }
+
     tCtx.putImageData(imgData, 0, 0);
-    
-    offscreenCanvas.width = baseLayer.w; offscreenCanvas.height = baseLayer.h;
-    offCtx.clearRect(0, 0, baseLayer.w, baseLayer.h);
-    offCtx.drawImage(baseLayer.img, 0, 0);
-    
-    // Fusione Trasparenza Sicura
-    const effectAlpha = effectOpacitySlider ? parseInt(effectOpacitySlider.value) / 100 : 1.0;
-    offCtx.globalAlpha = effectAlpha;
-    offCtx.drawImage(tempCanvas, 0, 0);
-    offCtx.globalAlpha = 1.0; 
-
-    const finalData = offCtx.getImageData(0, 0, baseLayer.w, baseLayer.h);
-    histCtx.clearRect(0, 0, histCanvas.width, histCanvas.height);
-    let lumArr = new Array(256).fill(0);
-    for (let i = 0; i < finalData.data.length; i += 4) { let l = Math.round(0.299 * finalData.data[i] + 0.587 * finalData.data[i+1] + 0.114 * finalData.data[i+2]); if(l >= 0 && l <= 255) lumArr[l]++; }
-    let max = Math.max(...lumArr); histCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    for (let i = 0; i < 256; i++) { let h = (lumArr[i] / max) * histCanvas.height; histCtx.fillRect(i * (histCanvas.width / 256), histCanvas.height - h, histCanvas.width / 256 + 0.5, h); }
-    
-    renderCanvas();
+    offCanvas.width = base.w; offCanvas.height = base.h;
+    offCtx.clearRect(0,0,base.w,base.h);
+    offCtx.drawImage(tCanvas, 0, 0);
+    drawHistogram(data); renderCanvas();
 }
-
-Object.keys(s).forEach(key => { 
-    if (s[key]) {
-        s[key].addEventListener('input', () => { 
-            if (v[key]) v[key].textContent = key === 'sat' ? s[key].value + '%' : s[key].value; 
-            updateBaseFilters(); 
-        }); 
-    }
-});
-
-if (effectOpacitySlider) {
-    effectOpacitySlider.addEventListener('input', (e) => {
-        if (effectOpacityVal) effectOpacityVal.textContent = e.target.value + '%';
-        updateBaseFilters();
-    });
-}
-
-function setSliders(t, ti, e, c, sh, hi, sa) {
-    if (layers.length === 0) return;
-    if (s.temp) { s.temp.value = t; v.temp.textContent = t; }
-    if (s.tint) { s.tint.value = ti; v.tint.textContent = ti; }
-    if (s.exp) { s.exp.value = e; v.exp.textContent = e; }
-    if (s.cont) { s.cont.value = c; v.cont.textContent = c; }
-    if (s.shadows) { s.shadows.value = sh; v.shadows.textContent = sh; }
-    if (s.highlights) { s.highlights.value = hi; v.highlights.textContent = hi; }
-    if (s.sat) { s.sat.value = sa; v.sat.textContent = sa + '%'; }
-    
-    if (effectOpacitySlider) {
-        effectOpacitySlider.value = 100;
-        if (effectOpacityVal) effectOpacityVal.textContent = '100%';
-    }
-    updateBaseFilters();
-}
-
-document.querySelectorAll('.preset-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        if (layers.length === 0) return;
-        const p = e.target.dataset.preset;
-        if (p === 'normal') setSliders(0, 0, 0, 0, 0, 0, 100);
-        if (p === 'vintage') setSliders(20, 10, 10, -10, 10, -10, 80);
-        if (p === 'cinematic') setSliders(-10, 10, -10, 30, 0, 0, 80);
-        if (p === 'bw') setSliders(0, 0, 0, 40, 0, 0, 0);
-    });
-});
 
 function renderCanvas() {
     if (layers.length === 0) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    ctx.translate(panX, panY);
-    ctx.scale(scale, scale);
-    
-    layers.forEach((layer, index) => {
-        if (!layer.visible) return;
-        ctx.save(); 
-        if (index === 0) {
-            ctx.drawImage(offscreenCanvas, layer.x, layer.y, layer.w, layer.h);
-        } else {
-            ctx.globalAlpha = layer.opacity;
-            ctx.globalCompositeOperation = layer.blendMode;
-            ctx.drawImage(layer.img, layer.x, layer.y, layer.w, layer.h);
-        }
-        ctx.restore(); 
+    ctx.translate(panX, panY); ctx.scale(scale, scale);
 
-        if (index === activeLayerIndex && index !== 0) {
-            ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2 / scale;
-            ctx.strokeRect(layer.x, layer.y, layer.w, layer.h);
+    layers.forEach((l, i) => {
+        if (!l.visible) return;
+        ctx.save();
+        if (i === 0) ctx.drawImage(offCanvas, l.x, l.y, l.w, l.h);
+        else {
+            ctx.globalAlpha = l.opacity || 1;
+            ctx.globalCompositeOperation = l.blendMode || 'source-over';
+            ctx.drawImage(l.img, l.x, l.y, l.w, l.h);
+        }
+        ctx.restore();
+        if (i === activeLayerIndex && i !== 0) {
+            ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2/scale;
+            ctx.strokeRect(l.x, l.y, l.w, l.h);
         }
     });
-    
-    if (isCropMode && (isDragging || Math.abs(currentPos.x - startPos.x) > 0)) {
-        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 3 / scale; 
-        ctx.setLineDash([8 / scale, 8 / scale]);
-        ctx.strokeRect(startPos.x, startPos.y, currentPos.x - startPos.x, currentPos.y - startPos.y); 
-        ctx.setLineDash([]);
-    }
 
+    if (isCropMode && (isCropDragging || Math.abs(currentCoords.x - startCoords.x) > 5)) {
+        ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2/scale; ctx.setLineDash([5/scale, 5/scale]);
+        ctx.strokeRect(startCoords.x, startCoords.y, currentCoords.x - startCoords.x, currentCoords.y - startCoords.y);
+    }
     ctx.restore();
 }
 
-let scale = 1; let panX = 0; let panY = 0;
-let isSpacePressed = false; let isPanning = false; let isDraggingLayer = false;
-let startPan = {x: 0, y: 0}; let startLayerPos = {x:0, y:0};
-
-function setZoom(newScale, focalX = canvas.width/2, focalY = canvas.height/2) {
-    if(layers.length === 0) return;
-    const oldScale = scale; scale = Math.max(0.1, Math.min(newScale, 5));
-    panX = focalX - (focalX - panX) * (scale / oldScale); panY = focalY - (focalY - panY) * (scale / oldScale);
-    if (zoomValDisplay) zoomValDisplay.textContent = Math.round(scale * 100) + '%'; 
-    renderCanvas();
-}
-function fitToScreen() {
-    if(layers.length === 0) return;
-    const base = layers[0]; const pad = 40;
-    const scaleX = (workspace.clientWidth - pad) / base.w; const scaleY = (workspace.clientHeight - pad) / base.h;
-    scale = Math.min(scaleX, scaleY, 1); 
-    panX = (workspace.clientWidth - base.w * scale) / 2; panY = (workspace.clientHeight - base.h * scale) / 2;
-    if (zoomValDisplay) zoomValDisplay.textContent = Math.round(scale * 100) + '%'; 
-    renderCanvas();
-}
-
-window.addEventListener('resize', () => {
-    if(layers.length > 0) {
-        canvas.width = workspace.clientWidth;
-        canvas.height = workspace.clientHeight;
-        renderCanvas();
-    }
-});
-
-const zIn = document.getElementById('zoom-in'); if (zIn) zIn.onclick = () => setZoom(scale * 1.2);
-const zOut = document.getElementById('zoom-out'); if (zOut) zOut.onclick = () => setZoom(scale / 1.2);
-const zFit = document.getElementById('zoom-fit'); if (zFit) zFit.onclick = fitToScreen;
-
-canvas.addEventListener('wheel', (e) => { e.preventDefault(); const rect = canvas.getBoundingClientRect(); setZoom(e.deltaY < 0 ? scale * 1.1 : scale / 1.1, e.clientX - rect.left, e.clientY - rect.top); }, {passive: false});
-
-window.addEventListener('keydown', (e) => { if(e.code === 'Space' && e.target.tagName !== 'INPUT') { isSpacePressed = true; canvas.style.cursor = 'grab'; }});
-window.addEventListener('keyup', (e) => { if(e.code === 'Space') { isSpacePressed = false; isPanning = false; canvas.style.cursor = 'default'; }});
-
+// --- NAVIGAZIONE ---
 function getRealCoords(e) {
-    const rect = canvas.getBoundingClientRect(); const clientX = e.clientX || (e.touches ? e.touches[0].clientX : 0); const clientY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
-    return { x: (clientX - rect.left - panX) / scale, y: (clientY - rect.top - panY) / scale };
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - rect.left;
+    const y = (e.clientY || (e.touches ? e.touches[0].clientY : 0)) - rect.top;
+    return { x: (x - panX) / scale, y: (y - panY) / scale };
 }
 
-canvas.addEventListener('mousedown', (e) => {
+function fitToScreen() {
     if (layers.length === 0) return;
-    
-    if (isTextMode && document.getElementById('watermark-text').value.trim() !== '') {
-        const coords = getRealCoords(e);
-        const tCtx = document.createElement('canvas').getContext('2d');
-        tCtx.canvas.width = layers[0].w; tCtx.canvas.height = layers[0].h;
-        tCtx.drawImage(layers[0].img, 0, 0);
-        tCtx.font = "bold 60px -apple-system, sans-serif";
-        tCtx.fillStyle = document.getElementById('watermark-color').value;
-        tCtx.fillText(document.getElementById('watermark-text').value, coords.x, coords.y);
-        
-        const newImg = new Image();
-        newImg.onload = () => { layers[0].img = newImg; saveHistory(); updateBaseFilters(); }
-        newImg.src = tCtx.canvas.toDataURL();
-        if (textBtn) textBtn.click();
-        return;
-    }
+    const base = layers[0];
+    const sX = (workspace.clientWidth - 40) / base.w, sY = (workspace.clientHeight - 40) / base.h;
+    scale = Math.min(sX, sY, 1);
+    panX = (workspace.clientWidth - base.w * scale) / 2;
+    panY = (workspace.clientHeight - base.h * scale) / 2;
+    zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas();
+}
 
-    if(isSpacePressed || e.button === 1) { 
-        isPanning = true; canvas.style.cursor = 'grabbing';
-        startPan = { x: (e.clientX||e.touches[0].clientX) - panX, y: (e.clientY||e.touches[0].clientY) - panY };
-        return;
-    }
-    
-    if (isCropMode) {
-        isDragging = true; startPos = getRealCoords(e); currentPos = { ...startPos }; 
-        return;
-    }
+canvas.onwheel = (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const oldScale = scale;
+    scale *= (e.deltaY < 0 ? 1.1 : 0.9);
+    scale = Math.max(0.05, Math.min(scale, 10));
+    panX = mx - (mx - panX) * (scale / oldScale);
+    panY = my - (my - panY) * (scale / oldScale);
+    zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas();
+};
 
+// --- EVENTI CARICAMENTO ---
+document.getElementById('upload-btn').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+            layers = [{ img, w: img.width, h: img.height, x: 0, y: 0, visible: true, name: "Sfondo", opacity: 1, blendMode: 'source-over' }];
+            activeLayerIndex = 0;
+            canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight;
+            noPhotoMsg.style.display = 'none'; canvas.style.display = 'block';
+            document.querySelector('.zoom-bar').style.display = 'flex';
+            saveHistory(); updateBaseFilters(); fitToScreen(); updateLayersUI();
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+document.getElementById('add-layer-btn').onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+            layers.push({ img, w: img.width, h: img.height, x: 0, y: 0, visible: true, name: "Livello " + layers.length, opacity: 1, blendMode: 'source-over' });
+            activeLayerIndex = layers.length - 1; updateLayersUI(); renderCanvas();
+        };
+        img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+// --- INPUTS ---
+canvas.onmousedown = (e) => {
+    if (layers.length === 0) return;
+    const coords = getRealCoords(e);
+    if (isSpacePressed || e.button === 1) { isPanning = true; startPan = { x: e.clientX - panX, y: e.clientY - panY }; return; }
+    if (isTextMode) {
+        const txt = document.getElementById('watermark-text').value; if (!txt) return;
+        const t = document.createElement('canvas'); t.width = layers[0].w; t.height = layers[0].h;
+        const tc = t.getContext('2d'); tc.drawImage(layers[0].img, 0, 0);
+        tc.font = "bold 60px sans-serif"; tc.fillStyle = document.getElementById('watermark-color').value;
+        tc.fillText(txt, coords.x, coords.y);
+        const ni = new Image(); ni.onload = () => { layers[0].img = ni; saveHistory(); updateBaseFilters(); };
+        ni.src = t.toDataURL(); isTextMode = false; document.getElementById('text-btn').classList.remove('active-action');
+        return;
+    }
+    if (isCropMode) { isCropDragging = true; startCoords = coords; return; }
     if (activeLayerIndex > 0) {
-        const coords = getRealCoords(e);
         const l = layers[activeLayerIndex];
         if (coords.x >= l.x && coords.x <= l.x + l.w && coords.y >= l.y && coords.y <= l.y + l.h) {
-            isDraggingLayer = true;
-            startLayerPos = { mouseX: coords.x, mouseY: coords.y, layerX: l.x, layerY: l.y };
+            isDraggingLayer = true; startLayerPos = { mx: coords.x, my: coords.y, lx: l.x, ly: l.y };
         }
     }
-});
+};
 
-window.addEventListener('mousemove', (e) => {
-    if(isPanning) {
-        panX = (e.clientX||e.touches[0].clientX) - startPan.x; panY = (e.clientY||e.touches[0].clientY) - startPan.y; renderCanvas();
-    } else if (isDraggingLayer) {
-        const coords = getRealCoords(e);
-        const l = layers[activeLayerIndex];
-        l.x = startLayerPos.layerX + (coords.x - startLayerPos.mouseX);
-        l.y = startLayerPos.layerY + (coords.y - startLayerPos.mouseY);
-        renderCanvas();
-    } else if (isCropMode && isDragging) {
-        currentPos = getRealCoords(e); 
-        renderCanvas();
+window.onmousemove = (e) => {
+    if (isPanning) { panX = e.clientX - startPan.x; panY = e.clientY - startPan.y; renderCanvas(); }
+    else if (isDraggingLayer) {
+        const c = getRealCoords(e); const l = layers[activeLayerIndex];
+        l.x = startLayerPos.lx + (c.x - startLayerPos.mx); l.y = startLayerPos.ly + (c.y - startLayerPos.my); renderCanvas();
+    } else if (isCropDragging) { currentCoords = getRealCoords(e); renderCanvas(); }
+};
+window.onmouseup = () => { isPanning = isDraggingLayer = isCropDragging = false; };
+
+// --- TOOLS ---
+document.getElementById('zoom-fit').onclick = fitToScreen;
+document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateZoomUI(); };
+document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateZoomUI(); };
+function updateZoomUI() { zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas(); }
+
+document.getElementById('rotate-btn').onclick = () => {
+    const t = document.createElement('canvas'); t.width = layers[0].h; t.height = layers[0].w;
+    const tc = t.getContext('2d'); tc.translate(t.width/2, t.height/2); tc.rotate(Math.PI/2); tc.drawImage(layers[0].img, -layers[0].w/2, -layers[0].h/2);
+    const ni = new Image(); ni.onload = () => { layers[0].img = ni; layers[0].w = ni.width; layers[0].h = ni.height; saveHistory(); updateBaseFilters(); fitToScreen(); };
+    ni.src = t.toDataURL();
+};
+
+document.getElementById('crop-btn').onclick = () => {
+    isCropMode = !isCropMode; document.getElementById('crop-btn').classList.toggle('active-action', isCropMode);
+    if (!isCropMode && Math.abs(currentCoords.x - startCoords.x) > 20) {
+        const x = Math.min(startCoords.x, currentCoords.x), y = Math.min(startCoords.y, currentCoords.y), w = Math.abs(currentCoords.x - startCoords.x), h = Math.abs(currentCoords.y - startCoords.y);
+        const t = document.createElement('canvas'); t.width = w; t.height = h;
+        t.getContext('2d').drawImage(layers[0].img, x, y, w, h, 0, 0, w, h);
+        const ni = new Image(); ni.onload = () => { layers[0].img = ni; layers[0].w = w; layers[0].h = h; saveHistory(); updateBaseFilters(); fitToScreen(); };
+        ni.src = t.toDataURL();
     }
-});
+};
 
-window.addEventListener('mouseup', () => { isPanning = false; isDraggingLayer = false; isDragging = false; if(isSpacePressed) canvas.style.cursor = 'grab'; });
+document.getElementById('text-btn').onclick = () => { isTextMode = !isTextMode; document.getElementById('text-btn').classList.toggle('active-action', isTextMode); };
 
-if (textBtn) textBtn.addEventListener('click', () => {
-    if (layers.length === 0) return;
-    if (isCropMode && cropBtn) cropBtn.click(); 
-    isTextMode = !isTextMode;
-    textBtn.classList.toggle('active-action', isTextMode);
-    canvas.style.cursor = isTextMode ? 'text' : 'default';
-});
-
-if (rotateBtn) rotateBtn.addEventListener('click', () => {
-    if (layers.length === 0) return;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = layers[0].h; tempCanvas.height = layers[0].w;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-    tempCtx.rotate(Math.PI / 2);
-    tempCtx.drawImage(layers[0].img, -layers[0].w / 2, -layers[0].h / 2);
-    const newImg = new Image();
-    newImg.onload = () => { 
-        layers[0].img = newImg; layers[0].w = newImg.width; layers[0].h = newImg.height; 
-        saveHistory(); updateBaseFilters(); fitToScreen(); 
+// PRESETS
+document.querySelectorAll('.preset-card').forEach(b => {
+    b.onclick = (e) => {
+        const p = e.target.dataset.preset;
+        if (p==='normal') { s.temp.value=0; s.exp.value=0; s.cont.value=0; s.shadows.value=0; s.sat.value=100; s.sharp.value=0; }
+        if (p==='vintage') { s.temp.value=15; s.exp.value=5; s.cont.value=-10; s.shadows.value=15; s.sat.value=80; s.sharp.value=15; }
+        if (p==='cinematic') { s.temp.value=-10; s.exp.value=-5; s.cont.value=20; s.shadows.value=20; s.sat.value=90; s.sharp.value=25; }
+        if (p==='bw') { s.sat.value=0; s.exp.value=5; s.sharp.value=30; s.cont.value=15; }
+        Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); });
+        updateBaseFilters();
     };
-    newImg.src = tempCanvas.toDataURL();
 });
 
-if (cropBtn) cropBtn.addEventListener('click', () => {
-    if (layers.length === 0) return;
-    if (isTextMode && textBtn) textBtn.click(); 
-    isCropMode = !isCropMode;
-    cropBtn.classList.toggle('active-action', isCropMode);
-    cropBtn.textContent = isCropMode ? '✅ Conferma' : '✂️ Taglia';
-    canvas.style.cursor = isCropMode ? 'crosshair' : 'default';
-    if (!isCropMode && Math.abs(currentPos.x - startPos.x) > 20) {
-        const x = Math.min(startPos.x, currentPos.x); const y = Math.min(startPos.y, currentPos.y);
-        const w = Math.abs(currentPos.x - startPos.x); const h = Math.abs(currentPos.y - startPos.y);
-        const tempCanvas = document.createElement('canvas'); tempCanvas.width = w; tempCanvas.height = h;
-        tempCanvas.getContext('2d').drawImage(layers[0].img, x, y, w, h, 0, 0, w, h);
-        const newImg = new Image();
-        newImg.onload = () => { 
-            layers[0].img = newImg; layers[0].w = w; layers[0].h = h; 
-            saveHistory(); updateBaseFilters(); fitToScreen(); 
-        };
-        newImg.src = tempCanvas.toDataURL();
-    }
-    renderCanvas();
-});
+Object.keys(s).forEach(k => { if(s[k]) s[k].oninput = () => { v[k].textContent = s[k].value + (k==='sat'?'%':''); updateBaseFilters(); }; });
 
-const resetBtn = document.getElementById('reset-btn');
-if (resetBtn) resetBtn.addEventListener('click', () => {
-    if (layers.length === 0) return;
-    setSliders(0, 0, 0, 0, 0, 0, 100);
-    if (effectOpacitySlider) { effectOpacitySlider.value = 100; if(effectOpacityVal) effectOpacityVal.textContent = '100%'; }
-    isCropMode = false; if (cropBtn) { cropBtn.classList.remove('active-action'); cropBtn.textContent = '✂️ Taglia'; }
-    isTextMode = false; if (textBtn) { textBtn.classList.remove('active-action'); }
-    canvas.style.cursor = 'default';
-    updateBaseFilters();
-});
+function drawHistogram(data) {
+    histCtx.clearRect(0,0,310,100); let lums = new Array(256).fill(0);
+    for(let i=0; i<data.length; i+=4) lums[Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2])]++;
+    let max = Math.max(...lums); histCtx.fillStyle = '#666';
+    for(let i=0; i<256; i++) histCtx.fillRect(i*(310/256), 100-(lums[i]/max)*100, 1, (lums[i]/max)*100);
+}
 
-const dwnBtn = document.getElementById('download-btn');
-if (dwnBtn) dwnBtn.addEventListener('click', () => {
-    if (layers.length === 0) return;
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = layers[0].w; exportCanvas.height = layers[0].h;
-    const expCtx = exportCanvas.getContext('2d');
-    
-    layers.forEach((layer, index) => {
-        if(!layer.visible) return;
-        expCtx.save(); 
-        if(index === 0) {
-            expCtx.drawImage(offscreenCanvas, 0, 0); 
-        } else {
-            expCtx.globalAlpha = layer.opacity;
-            expCtx.globalCompositeOperation = layer.blendMode;
-            expCtx.drawImage(layer.img, layer.x, layer.y, layer.w, layer.h); 
-        }
-        expCtx.restore();
+document.getElementById('download-btn').onclick = () => {
+    const e = document.createElement('canvas'); e.width = layers[0].w; e.height = layers[0].h;
+    const ec = e.getContext('2d');
+    layers.forEach((l, i) => { if(l.visible) ec.drawImage(i===0?offCanvas:l.img, l.x, l.y, l.w, l.h); });
+    const a = document.createElement('a'); a.download = 'FastPhoto_Pro.png'; a.href = e.toDataURL(); a.click();
+};
+
+function updateLayersUI() {
+    const list = document.getElementById('layers-list');
+    list.innerHTML = '';
+    layers.forEach((l, i) => {
+        const div = document.createElement('div'); div.className = `layer-item ${i === activeLayerIndex ? 'active' : ''}`;
+        div.innerHTML = `<span><i class="fa-solid fa-layer-group"></i> ${l.name}</span> <i class="fa-solid ${l.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
+        div.onclick = () => { activeLayerIndex = i; updateLayersUI(); renderCanvas(); };
+        list.appendChild(div);
     });
-    
-    const link = document.createElement('a'); link.download = 'FastPhoto_Pro_Export.png'; link.href = exportCanvas.toDataURL('image/png', 1.0); link.click();
-});
+    document.getElementById('layer-settings').style.display = activeLayerIndex > 0 ? 'block' : 'none';
+}
+
+window.onkeydown = (e) => { if(e.code==='Space') { isSpacePressed=true; canvas.style.cursor='grab'; } };
+window.onkeyup = (e) => { if(e.code==='Space') { isSpacePressed=false; canvas.style.cursor='default'; } };
+window.onresize = () => { canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight; renderCanvas(); };
 
