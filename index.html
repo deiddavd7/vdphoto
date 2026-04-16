@@ -95,6 +95,11 @@
 
         <aside class="side-panel">
             <div class="panel-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+                    <button id="clip-shadows-btn" class="icon-btn" title="Avviso Ombre Perse" style="border: 1px solid #333; padding: 4px 8px; color: #007aff;"><i class="fa-solid fa-circle-half-stroke"></i></button>
+                    <span style="font-size:0.7rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; font-weight:600;">Istogramma</span>
+                    <button id="clip-highlights-btn" class="icon-btn" title="Avviso Luci Bruciate" style="border: 1px solid #333; padding: 4px 8px; color: #ff3b30;"><i class="fa-solid fa-circle-half-stroke"></i></button>
+                </div>
                 <div class="histogram-container"><canvas id="hist-canvas" width="310" height="80"></canvas></div>
             </div>
 
@@ -142,6 +147,21 @@
                     <canvas id="curve-canvas" width="256" height="256"></canvas>
                     <p class="curve-hint">Trascina il punto per modificare luci/ombre</p>
                 </div>
+            </div>
+
+            <div class="panel-section">
+                <h2><i class="fa-solid fa-palette"></i> Color Mix (HSL)</h2>
+                <select id="hsl-channel" class="pro-select" style="margin-bottom: 15px;">
+                    <option value="red">🔴 Rossi</option>
+                    <option value="orange">🟠 Arancioni</option>
+                    <option value="yellow">🟡 Gialli</option>
+                    <option value="green">🟢 Verdi</option>
+                    <option value="blue">🔵 Blu</option>
+                    <option value="magenta">🟣 Magenta</option>
+                </select>
+                <div class="slider-group"><div class="slider-info"><span>Tonalità</span><span id="hsl-h-val">0</span></div><input type="range" id="hsl-h" min="-100" max="100" value="0"></div>
+                <div class="slider-group"><div class="slider-info"><span>Saturazione</span><span id="hsl-s-val">0</span></div><input type="range" id="hsl-s" min="-100" max="100" value="0"></div>
+                <div class="slider-group"><div class="slider-info"><span>Luminanza</span><span id="hsl-l-val">0</span></div><input type="range" id="hsl-l" min="-100" max="100" value="0"></div>
             </div>
 
             <div class="panel-section">
@@ -201,7 +221,7 @@
                 <div class="slider-group"><div class="slider-info"><span>🌓 Contrasto</span><span id="contrast-val">0</span></div><input type="range" id="contrast-slider" min="-100" max="100" value="0"></div>
                 <div class="slider-group"><div class="slider-info"><span>🌑 Ombre</span><span id="shadows-val">0</span></div><input type="range" id="shadows-slider" min="-100" max="100" value="0"></div>
                 <div class="slider-group"><div class="slider-info"><span>💡 Luci</span><span id="highlights-val">0</span></div><input type="range" id="highlights-slider" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>🎨 Saturazione</span><span id="saturation-val">100%</span></div><input type="range" id="saturation-slider" min="0" max="200" value="100"></div>
+                <div class="slider-group"><div class="slider-info"><span>🎨 Saturazione Globale</span><span id="saturation-val">100%</span></div><input type="range" id="saturation-slider" min="0" max="200" value="100"></div>
             </div>
 
             <div class="footer-actions">

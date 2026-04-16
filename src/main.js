@@ -42,6 +42,11 @@ let isCropMode = false, isCropDragging = false, isTextMode = false;
 let isCloneMode = false, isCloning = false, cloneSource = null, cloneOffset = {dx:0, dy:0}, hoverCoords = null;
 let isBrushMode = false, isBrushing = false;
 
+// NUOVO: Variabili per i Clipping Warnings e l'Esportazione
+let showShadowClipping = false;
+let showHighlightClipping = false;
+let isExporting = false;
+
 const s = {
     effOp: document.getElementById('effect-opacity-slider'), sharp: document.getElementById('sharpness-slider'),
     temp: document.getElementById('temp-slider'), tint: document.getElementById('tint-slider'),
@@ -58,7 +63,29 @@ const v = {
 };
 
 // ============================================================================
-// 3. HISTORY MANAGEMENT (UNDO/REDO)
+// 3. COLOR MIX (HSL SELETTIVO) STATE & UI
+// ============================================================================
+let hslState = {
+    red: { h:0, s:0, l:0 }, orange: { h:0, s:0, l:0 }, yellow: { h:0, s:0, l:0 },
+    green: { h:0, s:0, l:0 }, blue: { h:0, s:0, l:0 }, magenta: { h:0, s:0, l:0 }
+};
+
+document.getElementById('hsl-channel').onchange = (e) => {
+    const ch = e.target.value;
+    document.getElementById('hsl-h').value = hslState[ch].h; document.getElementById('hsl-s').value = hslState[ch].s; document.getElementById('hsl-l').value = hslState[ch].l;
+    document.getElementById('hsl-h-val').textContent = hslState[ch].h; document.getElementById('hsl-s-val').textContent = hslState[ch].s; document.getElementById('hsl-l-val').textContent = hslState[ch].l;
+};
+
+['h', 's', 'l'].forEach(prop => {
+    document.getElementById(`hsl-${prop}`).oninput = (e) => {
+        const ch = document.getElementById('hsl-channel').value; hslState[ch][prop] = parseInt(e.target.value);
+        document.getElementById(`hsl-${prop}-val`).textContent = e.target.value; updateBaseFilters();
+    };
+    document.getElementById(`hsl-${prop}`).onchange = () => saveHistory();
+});
+
+// ============================================================================
+// 4. HISTORY MANAGEMENT (UNDO/REDO)
 // ============================================================================
 function saveHistory() {
     if (layers.length === 0) return;
@@ -74,7 +101,7 @@ async function loadHistoryState() {
 }
 
 // ============================================================================
-// 4. TONE CURVES
+// 5. TONE CURVES
 // ============================================================================
 const curveCanvas = document.getElementById('curve-canvas'); const curveCtx = curveCanvas.getContext('2d');
 let curvePoint = { x: 128, y: 128 }; let isDraggingCurve = false; let curveLUT = new Uint8Array(256);
@@ -99,20 +126,27 @@ window.addEventListener('mousemove', (e) => {
 window.addEventListener('mouseup', () => isDraggingCurve = false);
 
 // ============================================================================
-// 5. CUSTOM PRESETS & LUTs (.cube)
+// 6. CUSTOM PRESETS & LUTs (.cube)
 // ============================================================================
 let activeLUT = null; let customPresets = JSON.parse(localStorage.getItem('fastphoto_presets')) || [];
 function renderCustomPresets() {
     const grid = document.getElementById('custom-presets-grid'); grid.innerHTML = '';
     customPresets.forEach((p, index) => {
         const btn = document.createElement('button'); btn.className = 'preset-card'; btn.style.borderColor = '#007aff'; btn.innerHTML = `<i class="fa-solid fa-star"></i> ${p.name}`;
-        btn.onclick = () => { s.effOp.value=p.s.effOp; s.sharp.value=p.s.sharp; s.temp.value=p.s.temp; s.tint.value=p.s.tint; s.exp.value=p.s.exp; s.cont.value=p.s.cont; s.shadows.value=p.s.shadows; s.high.value=p.s.high; s.sat.value=p.s.sat; curvePoint = { ...p.curve }; Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); }); drawCurveGraph(); updateBaseFilters(); saveHistory(); };
+        btn.onclick = () => { 
+            s.effOp.value=p.s.effOp; s.sharp.value=p.s.sharp; s.temp.value=p.s.temp; s.tint.value=p.s.tint; s.exp.value=p.s.exp; s.cont.value=p.s.cont; s.shadows.value=p.s.shadows; s.high.value=p.s.high; s.sat.value=p.s.sat; 
+            curvePoint = { ...p.curve }; 
+            hslState = p.hsl ? JSON.parse(JSON.stringify(p.hsl)) : { red:{h:0,s:0,l:0}, orange:{h:0,s:0,l:0}, yellow:{h:0,s:0,l:0}, green:{h:0,s:0,l:0}, blue:{h:0,s:0,l:0}, magenta:{h:0,s:0,l:0} };
+            const ch = document.getElementById('hsl-channel').value; document.getElementById('hsl-h').value = hslState[ch].h; document.getElementById('hsl-s').value = hslState[ch].s; document.getElementById('hsl-l').value = hslState[ch].l; document.getElementById('hsl-h-val').textContent = hslState[ch].h; document.getElementById('hsl-s-val').textContent = hslState[ch].s; document.getElementById('hsl-l-val').textContent = hslState[ch].l;
+            Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); }); 
+            drawCurveGraph(); updateBaseFilters(); saveHistory(); 
+        };
         btn.oncontextmenu = (e) => { e.preventDefault(); if(confirm(`Eliminare il preset "${p.name}"?`)) { customPresets.splice(index, 1); localStorage.setItem('fastphoto_presets', JSON.stringify(customPresets)); renderCustomPresets(); } };
         grid.appendChild(btn);
     });
 }
 renderCustomPresets();
-document.getElementById('save-preset-btn').onclick = () => { const name = prompt("Nome del filtro:"); if(!name) return; const preset = { name, s: { effOp: s.effOp.value, sharp: s.sharp.value, temp: s.temp.value, tint: s.tint.value, exp: s.exp.value, cont: s.cont.value, shadows: s.shadows.value, high: s.high.value, sat: s.sat.value }, curve: { ...curvePoint } }; customPresets.push(preset); localStorage.setItem('fastphoto_presets', JSON.stringify(customPresets)); renderCustomPresets(); };
+document.getElementById('save-preset-btn').onclick = () => { const name = prompt("Nome del filtro:"); if(!name) return; const preset = { name, s: { effOp: s.effOp.value, sharp: s.sharp.value, temp: s.temp.value, tint: s.tint.value, exp: s.exp.value, cont: s.cont.value, shadows: s.shadows.value, high: s.high.value, sat: s.sat.value }, curve: { ...curvePoint }, hsl: JSON.parse(JSON.stringify(hslState)) }; customPresets.push(preset); localStorage.setItem('fastphoto_presets', JSON.stringify(customPresets)); renderCustomPresets(); };
 document.getElementById('lut-upload').onchange = (e) => {
     const file = e.target.files[0]; if(!file) return; const reader = new FileReader();
     reader.onload = (ev) => {
@@ -124,7 +158,7 @@ document.getElementById('lut-upload').onchange = (e) => {
 document.getElementById('remove-lut-btn').onclick = () => { activeLUT = null; document.getElementById('remove-lut-btn').style.display = 'none'; updateBaseFilters(); saveHistory(); };
 
 // ============================================================================
-// 6. CORE IMAGE PROCESSING (RAW DEV ENGINE)
+// 7. CORE IMAGE PROCESSING (RAW DEV ENGINE + HSL + CLIPPING)
 // ============================================================================
 function applySharpen(data, w, h, amount) {
     if (amount <= 0) return data; const weights = [0, -amount, 0, -amount, 1 + amount * 4, -amount, 0, -amount, 0]; const out = new Uint8ClampedArray(data.length);
@@ -135,26 +169,83 @@ function updateBaseFilters() {
     if (layers.length === 0) return;
     const base = layers[0]; const tCanvas = document.createElement('canvas'); tCanvas.width = base.w; tCanvas.height = base.h; const tCtx = tCanvas.getContext('2d'); tCtx.drawImage(base.workingCanvas || base.img, 0, 0);
     let imgData = tCtx.getImageData(0, 0, base.w, base.h); let data = imgData.data;
+    
     const effOp = parseInt(s.effOp?.value || 100) / 100, sharp = parseInt(s.sharp?.value || 0) / 100, temp = parseInt(s.temp?.value || 0), tint = parseInt(s.tint?.value || 0), exp = parseInt(s.exp?.value || 0), cont = parseInt(s.cont?.value || 0), shadows = parseInt(s.shadows?.value || 0), high = parseInt(s.high?.value || 0), sat = parseInt(s.sat?.value || 100) / 100, factor = (259 * (cont + 255)) / (255 * (259 - cont)), lutSize = activeLUT ? activeLUT.size - 1 : 0;
+    
+    let applyHsl = false; const activeHsl = []; const targets = [0, 30, 60, 120, 240, 300]; const keys = ['red', 'orange', 'yellow', 'green', 'blue', 'magenta'];
+    for(let j=0; j<6; j++) { let ch = hslState[keys[j]]; if(ch.h!==0 || ch.s!==0 || ch.l!==0) { applyHsl = true; activeHsl.push({ th: targets[j], dh: ch.h * 0.5, ds: ch.s/100, dl: ch.l/100 }); } }
+
     for (let i = 0; i < data.length; i += 4) {
+        
+        // 3D LUT
         if(activeLUT) { let cr = Math.max(0, Math.min(255, data[i])); let cg = Math.max(0, Math.min(255, data[i+1])); let cb = Math.max(0, Math.min(255, data[i+2])); let bx = Math.round((cr / 255) * lutSize); let by = Math.round((cg / 255) * lutSize); let bz = Math.round((cb / 255) * lutSize); let idx = (bz * activeLUT.size * activeLUT.size + by * activeLUT.size + bx) * 3; data[i] = activeLUT.data[idx] * 255; data[i+1] = activeLUT.data[idx+1] * 255; data[i+2] = activeLUT.data[idx+2] * 255; }
+        
+        // Curve
         data[i] = curveLUT[data[i]]; data[i+1] = curveLUT[data[i+1]]; data[i+2] = curveLUT[data[i+2]];
+        
+        // HSL
+        if (applyHsl) {
+            let r = data[i]/255, g = data[i+1]/255, b = data[i+2]/255;
+            let max = Math.max(r, g, b), min = Math.min(r, g, b);
+            let h = 0, s_hsl = 0, l = (max + min) / 2;
+            if (max !== min) {
+                let d = max - min; s_hsl = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                if (max === r) h = (g - b) / d + (g < b ? 6 : 0); else if (max === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+                h /= 6;
+            }
+            h *= 360;
+            if (s_hsl > 0.05 && l > 0.02 && l < 0.98) {
+                let sh = 0, ss = 0, sl = 0;
+                for(let j=0; j<activeHsl.length; j++) {
+                    let a = activeHsl[j]; let dist = Math.abs(h - a.th); if (dist > 180) dist = 360 - dist;
+                    if (dist < 45) { let w = 1 - (dist / 45); sh += a.dh * w; ss += a.ds * w; sl += a.dl * w; }
+                }
+                if (sh !== 0 || ss !== 0 || sl !== 0) {
+                    h = (h + sh + 360) % 360; s_hsl = Math.max(0, Math.min(1, s_hsl + ss)); l = Math.max(0, Math.min(1, l + sl));
+                    h /= 360; let q = l < 0.5 ? l * (1 + s_hsl) : l + s_hsl - l * s_hsl; let p = 2 * l - q;
+                    let tr = h + 1/3, tg = h, tb = h - 1/3;
+                    if(tr < 0) tr+=1; else if(tr > 1) tr-=1; if(tg < 0) tg+=1; else if(tg > 1) tg-=1; if(tb < 0) tb+=1; else if(tb > 1) tb-=1;
+                    data[i] = (tr < 1/6 ? p + (q-p)*6*tr : tr < 1/2 ? q : tr < 2/3 ? p + (q-p)*(2/3-tr)*6 : p)*255;
+                    data[i+1] = (tg < 1/6 ? p + (q-p)*6*tg : tg < 1/2 ? q : tg < 2/3 ? p + (q-p)*(2/3-tg)*6 : p)*255;
+                    data[i+2] = (tb < 1/6 ? p + (q-p)*6*tb : tb < 1/2 ? q : tb < 2/3 ? p + (q-p)*(2/3-tb)*6 : p)*255;
+                }
+            }
+        }
+
+        // Sviluppo
         data[i] += temp + exp; data[i+1] += tint + exp; data[i+2] += exp - temp; data[i] = factor * (data[i] - 128) + 128; data[i+1] = factor * (data[i+1] - 128) + 128; data[i+2] = factor * (data[i+2] - 128) + 128;
         data[i]=Math.min(255,Math.max(0,data[i])); data[i+1]=Math.min(255,Math.max(0,data[i+1])); data[i+2]=Math.min(255,Math.max(0,data[i+2]));
+        
         let lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
         if (shadows !== 0 && lum < 128) { let m = (128-lum)/128; data[i]+=shadows*m; data[i+1]+=shadows*m; data[i+2]+=shadows*m; }
         if (high !== 0 && lum > 128) { let m = (lum-128)/127; data[i]-=high*m; data[i+1]-=high*m; data[i+2]-=high*m; }
         lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]; data[i]=lum+(data[i]-lum)*sat; data[i+1]=lum+(data[i+1]-lum)*sat; data[i+2]=lum+(data[i+2]-lum)*sat;
+
+        // NUOVO: Avvisi di Clipping
+        if (!isExporting) {
+            if (showShadowClipping && data[i] <= 2 && data[i+1] <= 2 && data[i+2] <= 2) {
+                data[i] = 0; data[i+1] = 0; data[i+2] = 255; // Blu
+            } else if (showHighlightClipping && data[i] >= 253 && data[i+1] >= 253 && data[i+2] >= 253) {
+                data[i] = 255; data[i+1] = 0; data[i+2] = 0; // Rosso
+            }
+        }
     }
+
     if (sharp > 0) { const sharpened = applySharpen(data, base.w, base.h, sharp); imgData.data.set(sharpened); }
     tCtx.putImageData(imgData, 0, 0); offCanvas.width = base.w; offCanvas.height = base.h; offCtx.clearRect(0,0,base.w,base.h); offCtx.drawImage(base.workingCanvas || base.img, 0, 0); offCtx.globalAlpha = effOp; offCtx.drawImage(tCanvas, 0, 0); offCtx.globalAlpha = 1.0;
+    
     drawHistogram(offCtx.getImageData(0,0,base.w,base.h).data); renderCanvas();
 }
 
 function drawHistogram(data) { histCtx.clearRect(0,0,310,80); let lums = new Array(256).fill(0); for(let i=0; i<data.length; i+=4) lums[Math.round(0.299*data[i]+0.587*data[i+1]+0.114*data[i+2])]++; let max = Math.max(...lums); histCtx.fillStyle = '#666'; for(let i=0; i<256; i++) histCtx.fillRect(i*(310/256), 80-(lums[i]/max)*80, 1, (lums[i]/max)*80); }
 
+// Toggle dei Clipping Warnings
+document.getElementById('clip-shadows-btn').onclick = function() { showShadowClipping = !showShadowClipping; this.classList.toggle('active-action', showShadowClipping); updateBaseFilters(); };
+document.getElementById('clip-highlights-btn').onclick = function() { showHighlightClipping = !showHighlightClipping; this.classList.toggle('active-action', showHighlightClipping); updateBaseFilters(); };
+
+
 // ============================================================================
-// 7. RENDERING & CANVAS INTERACTION
+// 8. RENDERING & CANVAS INTERACTION
 // ============================================================================
 function renderCanvas() {
     if (layers.length === 0) return; ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.save(); ctx.translate(panX, panY); ctx.scale(scale, scale);
@@ -184,7 +275,7 @@ window.onmousemove = (e) => { hoverCoords = getRealCoords(e); if (isPanning) { p
 window.onmouseup = () => { if(isCloning || isBrushing) { saveHistory(); } isPanning = isDraggingLayer = isCropDragging = isCloning = isBrushing = false; };
 
 // ============================================================================
-// 8. PROJECT LIBRARY & LOAD LOGIC
+// 9. PROJECT LIBRARY & LOAD LOGIC
 // ============================================================================
 let currentFolderId = null; const libPanel = document.getElementById('library-panel');
 document.getElementById('toggle-library-btn').onclick = () => { libPanel.style.display = libPanel.style.display === 'none' ? 'flex' : 'none'; };
@@ -217,7 +308,7 @@ function loadToApp(src) {
 }
 
 // ============================================================================
-// 9. TOOLS, EXPORT MODAL & UI BINDINGS
+// 10. UI BINDINGS & EXPORT (TOBLOB)
 // ============================================================================
 function toggleTool(btn, set, flag) { isCropMode=isTextMode=isCloneMode=isBrushMode=false; document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active-action')); document.getElementById('clone-settings').style.display='none'; document.getElementById('brush-settings').style.display='none'; canvas.style.cursor='default'; if(flag) { btn.classList.add('active-action'); if(set) document.getElementById(set).style.display='block'; canvas.style.cursor='crosshair'; } }
 document.getElementById('zoom-fit').onclick = fitToScreen; document.getElementById('zoom-in').onclick = () => { scale *= 1.2; zoomValDisp.textContent = Math.round(scale*100)+'%'; renderCanvas(); }; document.getElementById('zoom-out').onclick = () => { scale /= 1.2; zoomValDisp.textContent = Math.round(scale*100)+'%'; renderCanvas(); };
@@ -227,41 +318,26 @@ document.getElementById('rotate-btn').onclick = () => { if(layers.length===0) re
 document.getElementById('crop-btn').onclick = () => { isCropMode = !isCropMode; toggleTool(document.getElementById('crop-btn'), null, isCropMode); if (!isCropMode && Math.abs(currentCoords.x - startCoords.x) > 20) { const x = Math.min(startCoords.x, currentCoords.x), y = Math.min(startCoords.y, currentCoords.y), w = Math.abs(currentCoords.x - startCoords.x), h = Math.abs(currentCoords.y - startCoords.y); const t = document.createElement('canvas'); t.width = w; t.height = h; t.getContext('2d').drawImage(layers[0].workingCanvas || layers[0].img, x, y, w, h, 0, 0, w, h); layers[0].workingCanvas = t; layers[0].w = w; layers[0].h = h; saveHistory(); updateBaseFilters(); fitToScreen(); } };
 document.getElementById('text-btn').onclick = () => { isTextMode = !isTextMode; toggleTool(document.getElementById('text-btn'), null, isTextMode); canvas.style.cursor = isTextMode ? 'text' : 'default'; };
 
-// === ESPORTAZIONE AVANZATA (TOBLOB UPDATE) ===
 const exportModal = document.getElementById('export-modal');
 document.getElementById('open-export-btn').onclick = () => { if (layers.length === 0) return; exportModal.style.display = 'flex'; updateExportStats(); };
 document.getElementById('close-export').onclick = () => exportModal.style.display = 'none';
+function updateExportStats() { const scaleFac = document.getElementById('export-scale').value / 100; const w = Math.round(layers[0].w * scaleFac); const h = Math.round(layers[0].h * scaleFac); document.getElementById('export-res-info').textContent = `Risoluzione: ${w} x ${h} px`; let usage = "Stampa / Archivio"; if (scaleFac < 0.6) usage = "Social / Web"; else if (scaleFac < 0.9) usage = "Portfolio"; document.getElementById('export-usage-info').textContent = `Destinazione: ${usage}`; document.getElementById('export-quality-val').textContent = document.getElementById('export-quality').value + '%'; document.getElementById('export-scale-val').textContent = document.getElementById('export-scale').value + '%'; document.getElementById('quality-group').style.opacity = document.getElementById('export-format').value === 'image/png' ? '0.3' : '1'; }
+document.getElementById('export-quality').oninput = updateExportStats; document.getElementById('export-scale').oninput = updateExportStats; document.getElementById('export-format').onchange = updateExportStats;
 
-function updateExportStats() {
-    const scaleFac = document.getElementById('export-scale').value / 100;
-    const w = Math.round(layers[0].w * scaleFac);
-    const h = Math.round(layers[0].h * scaleFac);
-    document.getElementById('export-res-info').textContent = `Risoluzione: ${w} x ${h} px`;
-    let usage = "Stampa / Archivio";
-    if (scaleFac < 0.6) usage = "Social / Web";
-    else if (scaleFac < 0.9) usage = "Portfolio";
-    document.getElementById('export-usage-info').textContent = `Destinazione: ${usage}`;
-    document.getElementById('export-quality-val').textContent = document.getElementById('export-quality').value + '%';
-    document.getElementById('export-scale-val').textContent = document.getElementById('export-scale').value + '%';
-    document.getElementById('quality-group').style.opacity = document.getElementById('export-format').value === 'image/png' ? '0.3' : '1';
-}
-
-document.getElementById('export-quality').oninput = updateExportStats; 
-document.getElementById('export-scale').oninput = updateExportStats; 
-document.getElementById('export-format').onchange = updateExportStats;
-
+// NUOVO: Esportazione a prova di bomba (Disattiva i Clipping Warnings prima di esportare)
 document.getElementById('confirm-export-btn').onclick = () => {
     const format = document.getElementById('export-format').value;
     const quality = document.getElementById('export-quality').value / 100;
     const scaleFac = document.getElementById('export-scale').value / 100;
 
-    // 1. Creiamo la tela finale
+    isExporting = true;
+    updateBaseFilters(); // Rimuove gli avvisi rossi e blu
+
     const eCanvas = document.createElement('canvas');
     eCanvas.width = layers[0].w * scaleFac;
     eCanvas.height = layers[0].h * scaleFac;
     const eCtx = eCanvas.getContext('2d');
 
-    // 2. Disegniamo tutto
     eCtx.scale(scaleFac, scaleFac);
     layers.forEach((l, i) => {
         if(!l.visible) return;
@@ -275,7 +351,9 @@ document.getElementById('confirm-export-btn').onclick = () => {
         eCtx.restore();
     });
 
-    // 3. Esportazione Sicura in Blob
+    isExporting = false;
+    updateBaseFilters(); // Rimette gli avvisi
+
     eCanvas.toBlob((blob) => {
         if (!blob) {
             alert("Errore di memoria durante l'esportazione. Prova a ridurre la scala.");
@@ -294,13 +372,12 @@ document.getElementById('confirm-export-btn').onclick = () => {
     }, format, quality);
 };
 
-// Altri Eventi
-document.querySelectorAll('.preset-card').forEach(b => { b.onclick = (e) => { const p = e.target.dataset.preset; if (p==='normal') { s.effOp.value=100; s.temp.value=0; s.tint.value=0; s.exp.value=0; s.cont.value=0; s.shadows.value=0; s.high.value=0; s.sat.value=100; s.sharp.value=0; curvePoint={x:128, y:128}; } if (p==='vintage') { s.effOp.value=100; s.temp.value=15; s.tint.value=10; s.exp.value=5; s.cont.value=-10; s.shadows.value=15; s.high.value=-10; s.sat.value=80; s.sharp.value=15; curvePoint={x:128, y:100}; } if (p==='cinematic') { s.effOp.value=100; s.temp.value=-10; s.tint.value=5; s.exp.value=-5; s.cont.value=20; s.shadows.value=20; s.high.value=5; s.sat.value=90; s.sharp.value=25; curvePoint={x:128, y:150}; } if (p==='bw') { s.effOp.value=100; s.sat.value=0; s.exp.value=5; s.sharp.value=30; s.cont.value=15; s.shadows.value=0; s.high.value=0; s.temp.value=0; s.tint.value=0; curvePoint={x:128, y:120}; } Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); }); drawCurveGraph(); updateBaseFilters(); saveHistory(); }; });
+document.querySelectorAll('.preset-card').forEach(b => { b.onclick = (e) => { const p = e.target.dataset.preset; if (p==='normal') { s.effOp.value=100; s.temp.value=0; s.tint.value=0; s.exp.value=0; s.cont.value=0; s.shadows.value=0; s.high.value=0; s.sat.value=100; s.sharp.value=0; curvePoint={x:128, y:128}; hslState = { red:{h:0,s:0,l:0}, orange:{h:0,s:0,l:0}, yellow:{h:0,s:0,l:0}, green:{h:0,s:0,l:0}, blue:{h:0,s:0,l:0}, magenta:{h:0,s:0,l:0} }; } if (p==='vintage') { s.effOp.value=100; s.temp.value=15; s.tint.value=10; s.exp.value=5; s.cont.value=-10; s.shadows.value=15; s.high.value=-10; s.sat.value=80; s.sharp.value=15; curvePoint={x:128, y:100}; hslState = { red:{h:0,s:0,l:0}, orange:{h:0,s:0,l:0}, yellow:{h:0,s:0,l:0}, green:{h:0,s:0,l:0}, blue:{h:0,s:0,l:0}, magenta:{h:0,s:0,l:0} }; } if (p==='cinematic') { s.effOp.value=100; s.temp.value=-10; s.tint.value=5; s.exp.value=-5; s.cont.value=20; s.shadows.value=20; s.high.value=5; s.sat.value=90; s.sharp.value=25; curvePoint={x:128, y:150}; hslState = { red:{h:0,s:0,l:0}, orange:{h:10,s:20,l:0}, yellow:{h:0,s:0,l:0}, green:{h:0,s:-20,l:0}, blue:{h:-10,s:30,l:0}, magenta:{h:0,s:0,l:0} }; } if (p==='bw') { s.effOp.value=100; s.sat.value=0; s.exp.value=5; s.sharp.value=30; s.cont.value=15; s.shadows.value=0; s.high.value=0; s.temp.value=0; s.tint.value=0; curvePoint={x:128, y:120}; hslState = { red:{h:0,s:0,l:0}, orange:{h:0,s:0,l:0}, yellow:{h:0,s:0,l:0}, green:{h:0,s:0,l:0}, blue:{h:0,s:0,l:0}, magenta:{h:0,s:0,l:0} }; } const ch = document.getElementById('hsl-channel').value; document.getElementById('hsl-h').value = hslState[ch].h; document.getElementById('hsl-s').value = hslState[ch].s; document.getElementById('hsl-l').value = hslState[ch].l; document.getElementById('hsl-h-val').textContent = hslState[ch].h; document.getElementById('hsl-s-val').textContent = hslState[ch].s; document.getElementById('hsl-l-val').textContent = hslState[ch].l; Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); }); drawCurveGraph(); updateBaseFilters(); saveHistory(); }; });
 Object.keys(s).forEach(k => { if(s[k]) s[k].oninput = () => { v[k].textContent = s[k].value + (k==='sat'?'%':''); updateBaseFilters(); }; }); Object.keys(s).forEach(k => { if(s[k]) s[k].onchange = () => saveHistory(); });
 function updateLayersUI() { const list = document.getElementById('layers-list'); list.innerHTML = ''; layers.forEach((l, i) => { const div = document.createElement('div'); div.className = `layer-item ${i === activeLayerIndex ? 'active' : ''}`; div.innerHTML = `<span><i class="fa-solid fa-layer-group"></i> ${l.name}</span> <i class="fa-solid ${l.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>`; div.onclick = (e) => { if(e.target.classList.contains('fa-eye')||e.target.classList.contains('fa-eye-slash')) l.visible = !l.visible; else activeLayerIndex = i; updateLayersUI(); renderCanvas(); }; list.appendChild(div); }); document.getElementById('layer-settings').style.display = activeLayerIndex > 0 ? 'block' : 'none'; }
 document.getElementById('layer-opacity').oninput = (e) => { if(activeLayerIndex>0) { layers[activeLayerIndex].opacity = e.target.value/100; document.getElementById('layer-opacity-val').textContent = e.target.value + '%'; renderCanvas(); }}; document.getElementById('layer-blend').onchange = (e) => { if(activeLayerIndex>0) { layers[activeLayerIndex].blendMode = e.target.value; renderCanvas(); }}; document.getElementById('del-layer-btn').onclick = () => { if(activeLayerIndex>0) { layers.splice(activeLayerIndex, 1); activeLayerIndex=0; updateLayersUI(); renderCanvas(); saveHistory(); } };
 window.onkeydown = (e) => { if(e.code==='Space') { isSpacePressed=true; canvas.style.cursor='grab'; } }; window.onkeyup = (e) => { if(e.code==='Space') { isSpacePressed=false; canvas.style.cursor= (isCloneMode||isBrushMode) ? 'crosshair' : 'default'; } }; window.onresize = () => { if(layers.length > 0){ canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight; renderCanvas();} }; document.getElementById('reset-btn').onclick = () => location.reload();
 
 // INIT DB
-initDB().then(loadFolders).catch(e => console.error("DB Error", e));
+initDB().then(loadFolders).catch(e => console.error("DB Init Error", e));
 

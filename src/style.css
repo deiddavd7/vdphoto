@@ -14,6 +14,7 @@ body { background: var(--bg-deep); color: var(--text); height: 100vh; overflow: 
 .history-group { display: flex; background: var(--bg-item); padding: 3px; border-radius: 8px; }
 .icon-btn { background: transparent; border: none; color: white; padding: 8px 12px; cursor: pointer; border-radius: 5px; transition: 0.2s; }
 .icon-btn:hover { background: var(--border); }
+.icon-btn.active-action { background: #333; }
 .main-cta { background: var(--accent); padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 8px; border:none; color:white;}
 
 .app-container { display: flex; height: calc(100vh - 60px); }
