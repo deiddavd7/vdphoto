@@ -43,7 +43,7 @@
     </div>
 
     <header class="top-bar">
-        <div class="logo"><i class="fa-solid fa-camera-retro"></i> FastPhoto <span>PRO</span></div>
+        <div class="logo"><i class="fa-solid fa-camera-retro"></i> FastPhoto <span>PRO</span> <span style="background:#ff3b30; color:white; border:none; margin-left:10px;">⚡ WebGL</span></div>
         <div class="top-controls">
             <button id="toggle-library-btn" class="main-cta" style="background: #2a3a50;"><i class="fa-solid fa-folder-tree"></i> Progetti</button>
             <div class="history-group">
@@ -80,7 +80,10 @@
                 <span id="exif-camera"><i class="fa-solid fa-camera"></i> ---</span>
                 <span id="exif-settings"><i class="fa-solid fa-sliders"></i> ---</span>
             </div>
+            
+            <canvas id="webgl-canvas" style="display:none;"></canvas>
             <canvas id="photo-canvas"></canvas>
+            
             <div id="no-photo-msg">
                 <i class="fa-solid fa-mountain-sun"></i>
                 <p>Seleziona una foto dai Progetti o clicca Apri</p>
