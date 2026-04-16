@@ -47,6 +47,18 @@
                 <div class="histogram-container"><canvas id="hist-canvas" width="310" height="80"></canvas></div>
             </div>
 
+            <div class="panel-section" style="background: #182230; border: 1px solid #2a3a50;">
+                <h2 style="color: #5facff;"><i class="fa-solid fa-bookmark"></i> I Miei Filtri & LUT</h2>
+                <div class="btn-row" style="margin-bottom: 12px;">
+                    <button id="save-preset-btn" class="btn-tool" style="background: #007aff; border: none;"><i class="fa-solid fa-floppy-disk"></i> Salva Preset</button>
+                    <label for="lut-upload" class="btn-tool" style="cursor:pointer; text-align:center; background: #2a3a50; border: none; margin: 0;"><i class="fa-solid fa-cube"></i> Carica .cube</label>
+                    <input type="file" id="lut-upload" accept=".cube" style="display:none;">
+                </div>
+                <div id="custom-presets-grid" class="presets-grid">
+                    </div>
+                <button id="remove-lut-btn" class="btn-sub" style="display: none; margin-top: 10px; width: 100%; color: #ff3b30; border-color: #ff3b30;"><i class="fa-solid fa-ban"></i> Rimuovi LUT Attivo</button>
+            </div>
+
             <div class="panel-section">
                 <h2><i class="fa-solid fa-toolbox"></i> Strumenti Rapidi</h2>
                 <div class="btn-row" style="flex-wrap: wrap;">
@@ -112,7 +124,7 @@
             </div>
 
             <div class="panel-section">
-                <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Filtri Rapidi</h2>
+                <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Filtri Default</h2>
                 <div class="presets-grid">
                     <button class="preset-card" data-preset="normal">Originale</button>
                     <button class="preset-card" data-preset="vintage">Vintage</button>
@@ -123,7 +135,6 @@
 
             <div class="panel-section">
                 <h2><i class="fa-solid fa-sliders"></i> Sviluppo Base</h2>
-                
                 <div class="slider-group" style="padding-bottom: 10px; border-bottom: 1px solid #333; margin-bottom: 15px;">
                     <div class="slider-info"><span style="color:#007aff; font-weight:bold;">🌟 Intensità Effetti</span><span id="effect-opacity-val">100%</span></div>
                     <input type="range" id="effect-opacity-slider" min="0" max="100" value="100">

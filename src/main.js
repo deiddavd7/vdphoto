@@ -53,9 +53,93 @@ window.addEventListener('mousemove', (e) => {
 });
 window.addEventListener('mouseup', () => isDraggingCurve = false);
 
+// --- GESTIONE PRESET E LUT UTENTE ---
+let activeLUT = null;
+let customPresets = JSON.parse(localStorage.getItem('fastphoto_presets')) || [];
+
+function renderCustomPresets() {
+    const grid = document.getElementById('custom-presets-grid');
+    grid.innerHTML = '';
+    customPresets.forEach((p, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-card';
+        btn.style.borderColor = '#007aff';
+        btn.innerHTML = `<i class="fa-solid fa-star"></i> ${p.name}`;
+        btn.onclick = () => {
+            s.effOp.value = p.s.effOp; s.sharp.value = p.s.sharp; s.temp.value = p.s.temp; s.tint.value = p.s.tint;
+            s.exp.value = p.s.exp; s.cont.value = p.s.cont; s.shadows.value = p.s.shadows; s.high.value = p.s.high; s.sat.value = p.s.sat;
+            curvePoint = { ...p.curve };
+            Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); });
+            drawCurveGraph(); updateBaseFilters(); saveHistory();
+        };
+        // Tasto destro per eliminare il preset
+        btn.oncontextmenu = (e) => {
+            e.preventDefault();
+            if(confirm(`Vuoi eliminare il preset "${p.name}"?`)) {
+                customPresets.splice(index, 1);
+                localStorage.setItem('fastphoto_presets', JSON.stringify(customPresets));
+                renderCustomPresets();
+            }
+        };
+        grid.appendChild(btn);
+    });
+}
+renderCustomPresets();
+
+document.getElementById('save-preset-btn').onclick = () => {
+    const name = prompt("Dai un nome al tuo filtro (es. 'Ritratto Caldo'):");
+    if(!name) return;
+    const preset = {
+        name,
+        s: {
+            effOp: s.effOp.value, sharp: s.sharp.value, temp: s.temp.value, tint: s.tint.value,
+            exp: s.exp.value, cont: s.cont.value, shadows: s.shadows.value, high: s.high.value, sat: s.sat.value
+        },
+        curve: { ...curvePoint }
+    };
+    customPresets.push(preset);
+    localStorage.setItem('fastphoto_presets', JSON.stringify(customPresets));
+    renderCustomPresets();
+};
+
+document.getElementById('lut-upload').onchange = (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const text = ev.target.result;
+        const lines = text.split('\n');
+        let size = 0; let data = [];
+        for(let line of lines) {
+            line = line.trim();
+            if(!line || line.startsWith('#')) continue;
+            if(line.startsWith('LUT_3D_SIZE')) size = parseInt(line.split(' ')[1]);
+            else if(/^[0-9.-]/.test(line)) {
+                const parts = line.split(/\s+/).map(Number);
+                if(parts.length === 3) data.push(parts[0], parts[1], parts[2]);
+            }
+        }
+        if(size > 0 && data.length > 0) {
+            activeLUT = { size, data, name: file.name };
+            document.getElementById('remove-lut-btn').style.display = 'block';
+            document.getElementById('remove-lut-btn').innerHTML = `<i class="fa-solid fa-ban"></i> Rimuovi LUT (${file.name})`;
+            updateBaseFilters(); saveHistory();
+        } else {
+            alert("File .cube non valido o corrotto.");
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+};
+
+document.getElementById('remove-lut-btn').onclick = () => {
+    activeLUT = null;
+    document.getElementById('remove-lut-btn').style.display = 'none';
+    updateBaseFilters(); saveHistory();
+};
+
 // --- STATO GLOBALE E NAVIGAZIONE ---
 let layers = []; let activeLayerIndex = -1;
-let history = []; let historyIndex = -1;
 let scale = 1, panX = 0, panY = 0;
 let isPanning = false, isSpacePressed = false, isDraggingLayer = false;
 let startPan = {x:0, y:0}, startCoords = {x:0, y:0}, currentCoords = {x:0, y:0}, startLayerPos = {x:0, y:0};
@@ -67,7 +151,6 @@ let isCloneMode = false, isCloning = false;
 let cloneSource = null, cloneOffset = {dx:0, dy:0}, hoverCoords = null;
 let isBrushMode = false, isBrushing = false;
 
-// Sliders completi (Effetti, Nitidezza, Colori, RAW)
 const s = {
     effOp: document.getElementById('effect-opacity-slider'), sharp: document.getElementById('sharpness-slider'),
     temp: document.getElementById('temp-slider'), tint: document.getElementById('tint-slider'),
@@ -153,8 +236,17 @@ function updateBaseFilters() {
     const sat = parseInt(s.sat?.value || 100) / 100; 
     
     const factor = (259 * (cont + 255)) / (255 * (259 - cont));
+    const lutSize = activeLUT ? activeLUT.size - 1 : 0;
 
     for (let i = 0; i < data.length; i += 4) {
+        // Applica 3D LUT se presente (Nearest Neighbor per prestazioni)
+        if(activeLUT) {
+            let cr = Math.max(0, Math.min(255, data[i])); let cg = Math.max(0, Math.min(255, data[i+1])); let cb = Math.max(0, Math.min(255, data[i+2]));
+            let bx = Math.round((cr / 255) * lutSize); let by = Math.round((cg / 255) * lutSize); let bz = Math.round((cb / 255) * lutSize);
+            let idx = (bz * activeLUT.size * activeLUT.size + by * activeLUT.size + bx) * 3;
+            data[i] = activeLUT.data[idx] * 255; data[i+1] = activeLUT.data[idx+1] * 255; data[i+2] = activeLUT.data[idx+2] * 255;
+        }
+
         data[i] = curveLUT[data[i]]; data[i+1] = curveLUT[data[i+1]]; data[i+2] = curveLUT[data[i+2]];
         
         data[i] += temp + exp; data[i+1] += tint + exp; data[i+2] += exp - temp;
@@ -241,11 +333,9 @@ canvas.onwheel = (e) => {
     zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas();
 };
 
-// --- CARICAMENTO CON EXIF ---
 document.getElementById('upload-btn').onchange = async (e) => {
     const file = e.target.files[0]; if (!file) return;
 
-    // Lettura Dati EXIF
     try {
         const exifData = await exifr.parse(file, {tiff: true, ifd0: true, exif: true});
         if(exifData) {
@@ -258,27 +348,13 @@ document.getElementById('upload-btn').onchange = async (e) => {
         }
     } catch(err) { exifBar.style.display = 'none'; console.log('No EXIF data found'); }
 
-    // Controllo RAW ed Estrazione JPEG Preview
     let targetSrc = '';
     const isRaw = file.name.toLowerCase().match(/\.(rw2|cr2|nef|arw)$/);
-    
     if (isRaw) {
-        try {
-            targetSrc = await exifr.thumbnailUrl(file);
-            if(!targetSrc) throw new Error("Anteprima non trovata");
-        } catch(err) {
-            alert("Impossibile estrarre l'anteprima da questo file RAW. Prova con un JPEG o usa un altro file RAW.");
-            return;
-        }
-    } else {
-        // Se non è RAW, carica normalmente
-        targetSrc = URL.createObjectURL(file);
-    }
+        try { targetSrc = await exifr.thumbnailUrl(file); if(!targetSrc) throw new Error("Anteprima non trovata"); } 
+        catch(err) { alert("Impossibile estrarre l'anteprima da questo RAW. Prova con un JPEG."); return; }
+    } else { targetSrc = URL.createObjectURL(file); }
 
-    loadToApp(targetSrc);
-};
-
-function loadToApp(src) {
     const img = new Image();
     img.onload = () => {
         const wCanvas = document.createElement('canvas'); wCanvas.width = img.width; wCanvas.height = img.height;
@@ -288,8 +364,8 @@ function loadToApp(src) {
         noPhotoMsg.style.display = 'none'; canvas.style.display = 'block'; document.querySelector('.zoom-bar').style.display = 'flex';
         saveHistory(); updateBaseFilters(); fitToScreen(); updateLayersUI();
     };
-    img.src = src;
-}
+    img.src = targetSrc;
+};
 
 document.getElementById('add-layer-btn').onchange = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -343,11 +419,9 @@ function applyCloneStroke(coords) {
     const brush = parseInt(document.getElementById('clone-size').value);
     const sx = coords.x + cloneOffset.dx; const sy = coords.y + cloneOffset.dy;
     
-    ctxW.save();
-    ctxW.beginPath(); ctxW.arc(coords.x, coords.y, brush, 0, Math.PI*2); ctxW.clip();
+    ctxW.save(); ctxW.beginPath(); ctxW.arc(coords.x, coords.y, brush, 0, Math.PI*2); ctxW.clip();
     ctxW.drawImage(layers[0].workingCanvas, sx - brush, sy - brush, brush*2, brush*2, coords.x - brush, coords.y - brush, brush*2, brush*2);
-    ctxW.restore();
-    updateBaseFilters();
+    ctxW.restore(); updateBaseFilters();
 }
 
 function applyBrushStroke(coords) {
@@ -362,10 +436,8 @@ function applyBrushStroke(coords) {
     if(mode === 'dodge') { grad.addColorStop(0, `rgba(255,255,255,${flow})`); grad.addColorStop(1, 'rgba(255,255,255,0)'); ctxW.globalCompositeOperation = 'soft-light'; }
     if(mode === 'burn') { grad.addColorStop(0, `rgba(0,0,0,${flow})`); grad.addColorStop(1, 'rgba(0,0,0,0)'); ctxW.globalCompositeOperation = 'soft-light'; }
     
-    ctxW.fillStyle = grad;
-    ctxW.beginPath(); ctxW.arc(coords.x, coords.y, brush, 0, Math.PI*2); ctxW.fill();
-    ctxW.restore();
-    updateBaseFilters();
+    ctxW.fillStyle = grad; ctxW.beginPath(); ctxW.arc(coords.x, coords.y, brush, 0, Math.PI*2); ctxW.fill();
+    ctxW.restore(); updateBaseFilters();
 }
 
 window.onmousemove = (e) => {
