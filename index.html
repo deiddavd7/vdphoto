@@ -4,93 +4,135 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FastPhoto Pro - Studio Edition</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="icon.png">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.0"></script>
+    
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
     <div id="export-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><i class="fa-solid fa-file-export"></i> Impostazioni Esportazione</h2>
+                <h2><i class="fa-solid fa-file-export"></i> Esportazione Finale</h2>
                 <button id="close-export" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="modal-body">
                 <div class="control-group">
                     <label>Formato File</label>
                     <select id="export-format" class="pro-select">
-                        <option value="image/jpeg">JPEG (Ottimizzato)</option>
-                        <option value="image/png">PNG (Massima Qualità)</option>
-                        <option value="image/webp">WebP (Moderno)</option>
+                        <option value="image/jpeg">JPEG (Massima Compatibilità)</option>
+                        <option value="image/png">PNG (Senza Perdita)</option>
+                        <option value="image/webp">WebP (Ottimizzato Web)</option>
                     </select>
                 </div>
-                <div id="quality-group" class="control-group">
-                    <div class="slider-info"><span>Qualità Compressione</span><span id="export-quality-val">90%</span></div>
+                <div class="control-group">
+                    <div class="slider-info"><span>Qualità / Compressione</span><span id="export-quality-val">90%</span></div>
                     <input type="range" id="export-quality" min="10" max="100" value="90">
                 </div>
                 <div class="control-group">
-                    <div class="slider-info"><span>Risoluzione (Scala)</span><span id="export-scale-val">100%</span></div>
+                    <div class="slider-info"><span>Scala Dimensioni</span><span id="export-scale-val">100%</span></div>
                     <input type="range" id="export-scale" min="10" max="100" value="100">
                 </div>
-                <div class="export-stats">
-                    <p id="export-res-info">Risoluzione: ---</p>
-                    <p id="export-usage-info" style="margin-top:5px; color:#fff;">Destinazione: Stampa / Archivio</p>
-                </div>
             </div>
-            <button id="confirm-export-btn" class="btn-save" style="margin-top:15px; width:100%;">Scarica Immagine</button>
+            <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
+                <button id="confirm-export-btn" class="btn-main-save">SCARICA FOTO / FRAME</button>
+                <button id="batch-export-btn" class="btn-main-save" style="background:#2a3a50; color:white; border: 1px solid #007aff;"><i class="fa-solid fa-file-zipper"></i> ESPORTA PROGETTO (ZIP)</button>
+            </div>
         </div>
     </div>
 
     <header class="top-bar">
-        <div class="logo"><i class="fa-solid fa-camera-retro"></i> FastPhoto <span>PRO</span> <span style="background:#ff3b30; color:white; border:none; margin-left:10px;">⚡ WebGL</span></div>
+        <div class="logo"><i class="fa-solid fa-camera-retro"></i> FastPhoto <span>PRO</span> <span class="gpu-badge">GPU ATTIVA</span></div>
+        
+        <div id="tool-options-bar" class="tool-options-bar" style="display:none;">
+            <div id="clone-settings" class="tool-settings-group" style="display:none;">
+                <span class="tool-label"><i class="fa-solid fa-stamp"></i> Timbro</span>
+                <input type="range" id="clone-size" min="5" max="150" value="20" title="Dimensione Timbro">
+                <span class="hint">ALT + Clic per campionare</span>
+            </div>
+            <div id="brush-settings" class="tool-settings-group" style="display:none;">
+                <span class="tool-label"><i class="fa-solid fa-paintbrush"></i> Pennello</span>
+                <select id="brush-mode" class="pro-select-mini"><option value="dodge">Schiarisci</option><option value="burn">Scurisci</option></select>
+                <input type="range" id="brush-size" min="10" max="300" value="50" title="Dimensione">
+            </div>
+            <div id="text-settings" class="tool-settings-group" style="display:none;">
+                <span class="tool-label"><i class="fa-solid fa-font"></i> Testo</span>
+                <input type="text" id="watermark-text" placeholder="Scrivi e clicca sulla foto..." class="pro-input">
+                <input type="color" id="watermark-color" value="#ffffff" class="pro-color-picker">
+            </div>
+        </div>
+
         <div class="top-controls">
-            <button id="toggle-library-btn" class="main-cta" style="background: #2a3a50;"><i class="fa-solid fa-folder-tree"></i> Progetti</button>
             <div class="history-group">
-                <button id="undo-btn" class="icon-btn" title="Annulla"><i class="fa-solid fa-rotate-left"></i></button>
+                <button id="undo-btn" class="icon-btn" title="Annulla (Cmd+Z)"><i class="fa-solid fa-rotate-left"></i></button>
                 <button id="redo-btn" class="icon-btn" title="Ripristina"><i class="fa-solid fa-rotate-right"></i></button>
             </div>
-            <label for="upload-btn" class="main-cta"><i class="fa-solid fa-image"></i> Apri Foto</label>
-            <input type="file" id="upload-btn" accept="image/*,.rw2,.cr2,.nef,.arw" style="display:none;">
+            <button id="toggle-library-btn" class="btn-top outline"><i class="fa-solid fa-folder-tree"></i> LIBRERIA</button>
+            
+            <label for="upload-btn" class="btn-top outline" style="cursor:pointer;"><i class="fa-solid fa-folder-open"></i> APRI MEDIA</label>
+            <input type="file" id="upload-btn" accept="image/*,video/mp4,video/quicktime,.rw2,.cr2,.nef,.arw" style="display:none;">
+            
+            <button id="open-export-btn" class="btn-top solid"><i class="fa-solid fa-download"></i> ESPORTA</button>
         </div>
     </header>
 
     <div class="app-container">
         <aside class="library-panel" id="library-panel" style="display: none;">
-            <div class="library-header">
-                <h2><i class="fa-solid fa-book-open"></i> I Miei Lavori</h2>
-                <button id="new-folder-btn" class="icon-btn" title="Nuova Cartella"><i class="fa-solid fa-folder-plus"></i></button>
+            <div class="panel-header">
+                <h2><i class="fa-solid fa-images"></i> PROGETTI</h2>
+                <button id="new-folder-btn" class="icon-btn"><i class="fa-solid fa-folder-plus"></i></button>
             </div>
             <div id="folders-list" class="folders-list"></div>
             <div id="active-folder-view" class="active-folder-view" style="display: none;">
                 <div class="folder-view-header">
                     <button id="back-folders-btn" class="icon-btn"><i class="fa-solid fa-arrow-left"></i></button>
-                    <h3 id="current-folder-name">---</h3>
+                    <h3 id="current-folder-name" class="text-ellipsis">---</h3>
                 </div>
-                <div class="folder-actions">
-                    <label for="upload-to-folder" class="btn-sub" style="background: #007aff; color: white; border: none; width: 100%; display: block; margin-bottom: 10px; text-align:center; padding:10px;"><i class="fa-solid fa-plus"></i> Aggiungi Foto</label>
-                    <input type="file" id="upload-to-folder" accept="image/*,.rw2" multiple style="display:none;">
-                </div>
+                <label for="upload-to-folder" class="btn-import"><i class="fa-solid fa-file-import"></i> IMPORTA SCATTI</label>
+                <input type="file" id="upload-to-folder" accept="image/*,.rw2" multiple style="display:none;">
                 <div id="folder-photos-grid" class="photos-grid"></div>
             </div>
         </aside>
 
         <main class="editor-workspace" id="workspace">
+            <div class="vertical-toolbar">
+                <button id="crop-btn" class="tool-btn" title="Taglia (C)"><i class="fa-solid fa-crop-simple"></i></button>
+                <button id="rotate-btn" class="tool-btn" title="Ruota"><i class="fa-solid fa-rotate-right"></i></button>
+                <div class="divider"></div>
+                <button id="clone-btn" class="tool-btn" title="Timbro (S)"><i class="fa-solid fa-stamp"></i></button>
+                <button id="brush-btn" class="tool-btn" title="Pennello (B)"><i class="fa-solid fa-paintbrush"></i></button>
+                <div class="divider"></div>
+                <button id="text-btn" class="tool-btn" title="Testo (T)"><i class="fa-solid fa-font"></i></button>
+            </div>
+
             <div id="exif-bar" class="exif-bar" style="display: none;">
-                <span id="exif-camera"><i class="fa-solid fa-camera"></i> ---</span>
-                <span id="exif-settings"><i class="fa-solid fa-sliders"></i> ---</span>
+                <span id="exif-camera"></span> <span class="divider"></span> <span id="exif-settings"></span>
             </div>
             
             <canvas id="webgl-canvas" style="display:none;"></canvas>
             <canvas id="photo-canvas"></canvas>
             
             <div id="no-photo-msg">
-                <i class="fa-solid fa-mountain-sun"></i>
-                <p>Seleziona una foto dai Progetti o clicca Apri</p>
+                <i class="fa-regular fa-image"></i>
+                <p>Nessun media selezionato.<br>Trascina un file Foto o Video qui.</p>
             </div>
+
             <div class="zoom-bar" style="display: none;">
+                <button id="play-pause-btn" title="Play/Pausa Video" style="display:none;"><i class="fa-solid fa-play"></i></button>
                 <button id="split-view-btn" title="Confronta Prima/Dopo (\)"><i class="fa-solid fa-arrows-left-right-to-line"></i></button>
-                <div style="width:1px; height:20px; background:#444; margin:0 5px;"></div>
+                <div class="divider horizontal"></div>
                 <button id="zoom-out"><i class="fa-solid fa-minus"></i></button>
                 <span id="zoom-val">100%</span>
                 <button id="zoom-in"><i class="fa-solid fa-plus"></i></button>
@@ -99,151 +141,116 @@
         </main>
 
         <aside class="side-panel">
-            <div class="panel-section">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
-                    <button id="clip-shadows-btn" class="icon-btn" title="Avviso Ombre Perse" style="border: 1px solid #333; padding: 4px 8px; color: #007aff;"><i class="fa-solid fa-circle-half-stroke"></i></button>
-                    <span style="font-size:0.7rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:1px; font-weight:600;">Istogramma</span>
-                    <button id="clip-highlights-btn" class="icon-btn" title="Avviso Luci Bruciate" style="border: 1px solid #333; padding: 4px 8px; color: #ff3b30;"><i class="fa-solid fa-circle-half-stroke"></i></button>
+            <div class="histogram-wrapper">
+                <div class="hist-controls">
+                    <button id="clip-shadows-btn" class="clip-btn shadow" title="Ombre Perse"><i class="fa-solid fa-circle"></i></button>
+                    <span><i class="fa-solid fa-chart-simple"></i> ISTOGRAMMA</span>
+                    <button id="clip-highlights-btn" class="clip-btn high" title="Luci Bruciate"><i class="fa-solid fa-circle"></i></button>
                 </div>
-                <div class="histogram-container"><canvas id="hist-canvas" width="310" height="80"></canvas></div>
+                <div class="histogram-container"><canvas id="hist-canvas" width="340" height="80"></canvas></div>
             </div>
 
-            <div class="panel-section" style="background: #1e1e1e; border: 1px solid #333;">
-                <h2 style="color: #ff9f0a;"><i class="fa-solid fa-copy"></i> Sincronizza (Batch)</h2>
-                <div class="btn-row">
-                    <button id="copy-settings-btn" class="btn-tool"><i class="fa-solid fa-clone"></i> Copia</button>
-                    <button id="paste-settings-btn" class="btn-tool"><i class="fa-solid fa-clipboard"></i> Incolla</button>
-                </div>
-                <p style="font-size:0.65rem; color:#888; margin-top:8px; text-align:center;">Scorciatoie: <b>Cmd/Ctrl + C</b> | <b>Cmd/Ctrl + V</b></p>
+            <div class="sync-bar">
+                <button id="copy-settings-btn" class="btn-sync"><i class="fa-solid fa-copy"></i> Copia Edit</button>
+                <button id="paste-settings-btn" class="btn-sync"><i class="fa-solid fa-paste"></i> Incolla</button>
             </div>
 
-            <div class="panel-section" style="background: #182230; border: 1px solid #2a3a50;">
-                <h2 style="color: #5facff;"><i class="fa-solid fa-bookmark"></i> I Miei Filtri & LUT</h2>
-                <div class="btn-row" style="margin-bottom: 12px;">
-                    <button id="save-preset-btn" class="btn-tool" style="background: #007aff; border: none;"><i class="fa-solid fa-floppy-disk"></i> Salva Preset</button>
-                    <label for="lut-upload" class="btn-tool" style="cursor:pointer; text-align:center; background: #2a3a50; border: none; margin: 0;"><i class="fa-solid fa-cube"></i> Carica .cube</label>
-                    <input type="file" id="lut-upload" accept=".cube" style="display:none;">
-                </div>
-                <div id="custom-presets-grid" class="presets-grid"></div>
-                <button id="remove-lut-btn" class="btn-sub" style="display: none; margin-top: 10px; width: 100%; color: #ff3b30; border-color: #ff3b30;"><i class="fa-solid fa-ban"></i> Rimuovi LUT</button>
+            <div class="accordion-container">
+                <details class="pro-accordion" open>
+                    <summary><i class="fa-solid fa-sliders"></i> SVILUPPO BASE</summary>
+                    <div class="acc-content">
+                        <div class="slider-group"><div class="slider-info"><span>Esposizione</span><span id="exposure-val" class="val-badge">0</span></div><input type="range" id="exposure-slider" min="-100" max="100" value="0"></div>
+                        <div class="slider-group"><div class="slider-info"><span>Contrasto</span><span id="contrast-val" class="val-badge">0</span></div><input type="range" id="contrast-slider" min="-100" max="100" value="0"></div>
+                        <div class="slider-group"><div class="slider-info"><span>Recupero Luci</span><span id="highlights-val" class="val-badge">0</span></div><input type="range" id="highlights-slider" min="0" max="100" value="0"></div>
+                        <div class="slider-group"><div class="slider-info"><span>Recupero Ombre</span><span id="shadows-val" class="val-badge">0</span></div><input type="range" id="shadows-slider" min="0" max="100" value="0"></div>
+                        <div class="slider-group"><div class="slider-info"><span>Nitidezza</span><span id="sharpness-val" class="val-badge">0</span></div><input type="range" id="sharpness-slider" min="0" max="100" value="0"></div>
+                    </div>
+                </details>
+
+                <details class="pro-accordion">
+                    <summary><i class="fa-solid fa-palette"></i> COLOR MIX (HSL)</summary>
+                    <div class="acc-content">
+                        <select id="hsl-channel" class="pro-select" style="margin-bottom:15px;">
+                            <option value="red">🔴 Rossi</option><option value="orange">🟠 Arancioni</option><option value="yellow">🟡 Gialli</option>
+                            <option value="green">🟢 Verdi</option><option value="blue">🔵 Blu</option><option value="magenta">🟣 Magenta</option>
+                        </select>
+                        <div class="slider-group"><div class="slider-info"><span>Tonalità</span><span id="hsl-h-val" class="val-badge">0</span></div><input type="range" id="hsl-h" min="-100" max="100" value="0"></div>
+                        <div class="slider-group"><div class="slider-info"><span>Saturazione</span><span id="hsl-s-val" class="val-badge">0</span></div><input type="range" id="hsl-s" min="-100" max="100" value="0"></div>
+                        <div class="slider-group"><div class="slider-info"><span>Luminanza</span><span id="hsl-l-val" class="val-badge">0</span></div><input type="range" id="hsl-l" min="-100" max="100" value="0"></div>
+                    </div>
+                </details>
+
+                <details class="pro-accordion">
+                    <summary><i class="fa-solid fa-circle-dot"></i> COLOR GRADING</summary>
+                    <div class="acc-content">
+                        <div class="grading-container">
+                            <div class="wheel-box"><span class="wheel-title">OMBRE</span><div class="color-wheel" id="wheel-shadows"><div class="wheel-handle"></div></div></div>
+                            <div class="wheel-box"><span class="wheel-title">MEZZITONI</span><div class="color-wheel" id="wheel-midtones"><div class="wheel-handle"></div></div></div>
+                            <div class="wheel-box"><span class="wheel-title">LUCI</span><div class="color-wheel" id="wheel-highlights"><div class="wheel-handle"></div></div></div>
+                        </div>
+                        <button id="reset-grading" class="btn-sub" style="margin-top:15px; width: 100%;"><i class="fa-solid fa-rotate-left"></i> RESETTA RUOTE</button>
+                    </div>
+                </details>
+
+                <details class="pro-accordion">
+                    <summary><i class="fa-solid fa-chart-line"></i> CURVE DI TONO</summary>
+                    <div class="acc-content">
+                        <div class="curve-container"><canvas id="curve-canvas" width="256" height="256"></canvas></div>
+                    </div>
+                </details>
+
+                <details class="pro-accordion pro-card" style="background:#111;">
+                    <summary><i class="fa-solid fa-layer-group"></i> LIVELLI & AI</summary>
+                    <div class="acc-content">
+                        <div id="layers-list" class="layers-list"></div>
+                        <div class="btn-row" style="margin-top: 12px; margin-bottom: 8px;">
+                            <button id="ai-mask-btn" class="btn-action accent" style="flex:1; background: rgba(0, 122, 255, 0.15);"><i class="fa-solid fa-user-astronaut"></i> Isola Soggetto (AI)</button>
+                        </div>
+                        <div class="btn-row">
+                            <label for="add-layer-btn" class="btn-sub"><i class="fa-solid fa-plus"></i> Livello</label>
+                            <input type="file" id="add-layer-btn" accept="image/*" style="display:none;">
+                            <button id="del-layer-btn" class="btn-sub btn-danger"><i class="fa-solid fa-trash-can"></i> Elimina</button>
+                        </div>
+                        <div id="layer-settings" class="sub-tool-box" style="display: none; margin-top: 15px;">
+                            <div class="slider-info"><span>Opacità</span><span id="layer-opacity-val">100%</span></div>
+                            <input type="range" id="layer-opacity" min="0" max="100" value="100" style="margin-bottom:15px;">
+                            <select id="layer-blend" class="pro-select">
+                                <option value="source-over">Normale</option>
+                                <option value="multiply">Moltiplica</option>
+                                <option value="screen">Scolora</option>
+                                <option value="overlay">Sovrapponi</option>
+                            </select>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="pro-accordion pro-card" style="border-color: #007aff;">
+                    <summary><i class="fa-solid fa-wand-magic-sparkles"></i> PRESETS E LUT 3D</summary>
+                    <div class="acc-content">
+                        <div class="presets-grid" style="margin-bottom: 15px;">
+                            <button class="preset-card" data-preset="normal"><i class="fa-regular fa-image"></i> Originale</button>
+                            <button class="preset-card" data-preset="vintage"><i class="fa-solid fa-camera-retro"></i> Vintage</button>
+                            <button class="preset-card" data-preset="cinematic"><i class="fa-solid fa-film"></i> Film</button>
+                            <button class="preset-card" data-preset="bw"><i class="fa-solid fa-circle-half-stroke"></i> B/N</button>
+                        </div>
+                        <div class="btn-row" style="margin-bottom: 15px;">
+                            <button id="save-preset-btn" class="btn-sub" style="flex:1; border-color: var(--accent); color: var(--accent);"><i class="fa-solid fa-floppy-disk"></i> Salva Edit</button>
+                            <label for="lut-upload" class="btn-sub" style="flex:1; text-align:center; cursor:pointer;"><i class="fa-solid fa-cube"></i> Carica .cube</label>
+                            <input type="file" id="lut-upload" accept=".cube" style="display:none;">
+                        </div>
+                        <div id="custom-presets-grid" class="presets-grid"></div>
+                        <button id="remove-lut-btn" class="btn-sub btn-danger" style="display:none; width:100%; margin-top:10px;"><i class="fa-solid fa-trash-can"></i> Rimuovi LUT</button>
+                    </div>
+                </details>
             </div>
 
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-toolbox"></i> Strumenti Rapidi</h2>
-                <div class="btn-row" style="flex-wrap: wrap;">
-                    <button id="crop-btn" class="btn-tool" title="(C) Taglia"><i class="fa-solid fa-crop"></i> Taglia</button>
-                    <button id="rotate-btn" class="btn-tool"><i class="fa-solid fa-rotate"></i> Ruota</button>
-                    <button id="clone-btn" class="btn-tool" title="(S) Timbro Clone"><i class="fa-solid fa-stamp"></i> Clona</button>
-                    <button id="brush-btn" class="btn-tool" title="(B) Pennello"><i class="fa-solid fa-paintbrush"></i> Pennello</button>
-                </div>
-                
-                <div id="clone-settings" style="display:none; margin-top: 10px; padding: 10px; background: #1c1c1c; border-radius: 8px; border: 1px solid #333;">
-                    <div class="slider-info"><span>Dim. Timbro</span><span id="clone-size-val">20px</span></div>
-                    <input type="range" id="clone-size" min="5" max="150" value="20">
-                    <p style="font-size:0.65rem; color:#888; margin-top:8px; text-align:center;">💡 <b>ALT + Clic</b> per campionare</p>
-                </div>
-
-                <div id="brush-settings" style="display:none; margin-top: 10px; padding: 10px; background: #1c1c1c; border-radius: 8px; border: 1px solid #333;">
-                    <select id="brush-mode" class="pro-select" style="margin-top:0; margin-bottom: 10px;">
-                        <option value="dodge">☀️ Schiarisci (Dodge)</option>
-                        <option value="burn">🌑 Scurisci (Burn)</option>
-                    </select>
-                    <div class="slider-info"><span>Dim. Pennello</span><span id="brush-size-val">50px</span></div>
-                    <input type="range" id="brush-size" min="10" max="300" value="50">
-                    <div class="slider-info" style="margin-top: 8px;"><span>Intensità</span><span id="brush-flow-val">10%</span></div>
-                    <input type="range" id="brush-flow" min="1" max="50" value="10">
-                </div>
-            </div>
-
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-bezier-curve"></i> Curve di Tono</h2>
-                <div class="curve-container">
-                    <canvas id="curve-canvas" width="256" height="256"></canvas>
-                    <p class="curve-hint">Trascina il punto per modificare luci/ombre</p>
-                </div>
-            </div>
-
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-palette"></i> Color Mix (HSL)</h2>
-                <select id="hsl-channel" class="pro-select" style="margin-bottom: 15px;">
-                    <option value="red">🔴 Rossi</option>
-                    <option value="orange">🟠 Arancioni</option>
-                    <option value="yellow">🟡 Gialli</option>
-                    <option value="green">🟢 Verdi</option>
-                    <option value="blue">🔵 Blu</option>
-                    <option value="magenta">🟣 Magenta</option>
-                </select>
-                <div class="slider-group"><div class="slider-info"><span>Tonalità</span><span id="hsl-h-val">0</span></div><input type="range" id="hsl-h" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>Saturazione</span><span id="hsl-s-val">0</span></div><input type="range" id="hsl-s" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>Luminanza</span><span id="hsl-l-val">0</span></div><input type="range" id="hsl-l" min="-100" max="100" value="0"></div>
-            </div>
-
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-layer-group"></i> Livelli</h2>
-                <div id="layers-list" class="layers-list"></div>
-                <div class="layer-btns">
-                    <label for="add-layer-btn" class="btn-sub"><i class="fa-solid fa-plus"></i> Aggiungi</label>
-                    <input type="file" id="add-layer-btn" accept="image/*" style="display:none;">
-                    <button id="del-layer-btn" class="btn-sub"><i class="fa-solid fa-trash"></i> Elimina</button>
-                </div>
-                <div id="layer-settings" class="mini-settings" style="display: none; margin-top:10px;">
-                    <div class="slider-info"><span>Opacità Livello</span><span id="layer-opacity-val">100%</span></div>
-                    <input type="range" id="layer-opacity" min="0" max="100" value="100">
-                    <select id="layer-blend" class="pro-select">
-                        <option value="source-over">Normale</option>
-                        <option value="multiply">Moltiplica</option>
-                        <option value="screen">Scolora</option>
-                        <option value="overlay">Sovrapponi</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-pen-nib"></i> Aggiungi Testo</h2>
-                <div class="text-tool">
-                    <input type="text" id="watermark-text" placeholder="Firma / Testo...">
-                    <input type="color" id="watermark-color" value="#ffffff">
-                    <button id="text-btn" class="btn-tool" style="flex: 0 0 auto; padding: 10px 15px;"><i class="fa-solid fa-font"></i></button>
-                </div>
-            </div>
-
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Filtri Default</h2>
-                <div class="presets-grid">
-                    <button class="preset-card" data-preset="normal">Originale</button>
-                    <button class="preset-card" data-preset="vintage">Vintage</button>
-                    <button class="preset-card" data-preset="cinematic">Film</button>
-                    <button class="preset-card" data-preset="bw">B/N Pro</button>
-                </div>
-            </div>
-
-            <div class="panel-section">
-                <h2><i class="fa-solid fa-sliders"></i> Sviluppo Base</h2>
-                <div class="slider-group" style="padding-bottom: 10px; border-bottom: 1px solid #333; margin-bottom: 15px;">
-                    <div class="slider-info"><span style="color:#007aff; font-weight:bold;">🌟 Intensità Effetti</span><span id="effect-opacity-val">100%</span></div>
-                    <input type="range" id="effect-opacity-slider" min="0" max="100" value="100">
-                </div>
-
-                <div class="slider-group pro-slider" style="background: #2a2a2a; padding: 8px; border-radius: 6px; margin-bottom: 15px;">
-                    <div class="slider-info"><span style="color:#ffcc00;">✨ Nitidezza</span><span id="sharpness-val">0</span></div>
-                    <input type="range" id="sharpness-slider" min="0" max="100" value="0">
-                </div>
-
-                <div class="slider-group"><div class="slider-info"><span>🌡 Temp.</span><span id="temp-val">0</span></div><input type="range" id="temp-slider" min="-50" max="50" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>🧪 Tinta</span><span id="tint-val">0</span></div><input type="range" id="tint-slider" min="-50" max="50" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>☀️ Esposizione</span><span id="exposure-val">0</span></div><input type="range" id="exposure-slider" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>🌓 Contrasto</span><span id="contrast-val">0</span></div><input type="range" id="contrast-slider" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>🌑 Ombre</span><span id="shadows-val">0</span></div><input type="range" id="shadows-slider" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>💡 Luci</span><span id="highlights-val">0</span></div><input type="range" id="highlights-slider" min="-100" max="100" value="0"></div>
-                <div class="slider-group"><div class="slider-info"><span>🎨 Saturazione Globale</span><span id="saturation-val">100%</span></div><input type="range" id="saturation-slider" min="0" max="200" value="100"></div>
-            </div>
-
-            <div class="footer-actions">
-                <button id="open-export-btn" class="btn-save"><i class="fa-solid fa-download"></i> Esporta Avanzata</button>
-                <button id="reset-btn" class="btn reset" style="margin-top:10px;">🔄 Resetta Tutto</button>
-            </div>
+            <button id="reset-btn" class="btn-global-reset"><i class="fa-solid fa-power-off"></i> AZZERA TUTTE LE MODIFICHE</button>
         </aside>
     </div>
+
+    <script>
+      if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js'); }); }
+    </script>
     <script type="module" src="/src/main.js"></script>
 </body>
 </html>
