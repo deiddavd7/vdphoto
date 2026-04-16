@@ -86,6 +86,8 @@
                 <p>Seleziona una foto dai Progetti o clicca Apri</p>
             </div>
             <div class="zoom-bar" style="display: none;">
+                <button id="split-view-btn" title="Confronta Prima/Dopo (\)"><i class="fa-solid fa-arrows-left-right-to-line"></i></button>
+                <div style="width:1px; height:20px; background:#444; margin:0 5px;"></div>
                 <button id="zoom-out"><i class="fa-solid fa-minus"></i></button>
                 <span id="zoom-val">100%</span>
                 <button id="zoom-in"><i class="fa-solid fa-plus"></i></button>
@@ -103,6 +105,15 @@
                 <div class="histogram-container"><canvas id="hist-canvas" width="310" height="80"></canvas></div>
             </div>
 
+            <div class="panel-section" style="background: #1e1e1e; border: 1px solid #333;">
+                <h2 style="color: #ff9f0a;"><i class="fa-solid fa-copy"></i> Sincronizza (Batch)</h2>
+                <div class="btn-row">
+                    <button id="copy-settings-btn" class="btn-tool"><i class="fa-solid fa-clone"></i> Copia</button>
+                    <button id="paste-settings-btn" class="btn-tool"><i class="fa-solid fa-clipboard"></i> Incolla</button>
+                </div>
+                <p style="font-size:0.65rem; color:#888; margin-top:8px; text-align:center;">Scorciatoie: <b>Cmd/Ctrl + C</b> | <b>Cmd/Ctrl + V</b></p>
+            </div>
+
             <div class="panel-section" style="background: #182230; border: 1px solid #2a3a50;">
                 <h2 style="color: #5facff;"><i class="fa-solid fa-bookmark"></i> I Miei Filtri & LUT</h2>
                 <div class="btn-row" style="margin-bottom: 12px;">
@@ -117,10 +128,10 @@
             <div class="panel-section">
                 <h2><i class="fa-solid fa-toolbox"></i> Strumenti Rapidi</h2>
                 <div class="btn-row" style="flex-wrap: wrap;">
-                    <button id="crop-btn" class="btn-tool"><i class="fa-solid fa-crop"></i> Taglia</button>
+                    <button id="crop-btn" class="btn-tool" title="(C) Taglia"><i class="fa-solid fa-crop"></i> Taglia</button>
                     <button id="rotate-btn" class="btn-tool"><i class="fa-solid fa-rotate"></i> Ruota</button>
-                    <button id="clone-btn" class="btn-tool"><i class="fa-solid fa-stamp"></i> Clona</button>
-                    <button id="brush-btn" class="btn-tool"><i class="fa-solid fa-paintbrush"></i> Pennello</button>
+                    <button id="clone-btn" class="btn-tool" title="(S) Timbro Clone"><i class="fa-solid fa-stamp"></i> Clona</button>
+                    <button id="brush-btn" class="btn-tool" title="(B) Pennello"><i class="fa-solid fa-paintbrush"></i> Pennello</button>
                 </div>
                 
                 <div id="clone-settings" style="display:none; margin-top: 10px; padding: 10px; background: #1c1c1c; border-radius: 8px; border: 1px solid #333;">
