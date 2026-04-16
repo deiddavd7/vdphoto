@@ -8,10 +8,64 @@ const offCtx = offCanvas.getContext('2d');
 const histCanvas = document.getElementById('hist-canvas');
 const histCtx = histCanvas.getContext('2d');
 
+// --- NUOVO: SETUP CURVE ---
+const curveCanvas = document.getElementById('curve-canvas');
+const curveCtx = curveCanvas.getContext('2d');
+let curvePoint = { x: 128, y: 128 }; // Punto di controllo (Mezzitoni)
+let isDraggingCurve = false;
+let curveLUT = new Uint8Array(256);
+
+function drawCurveGraph() {
+    curveCtx.clearRect(0, 0, 256, 256);
+    // Griglia
+    curveCtx.strokeStyle = '#333'; curveCtx.lineWidth = 1;
+    for(let i=1; i<4; i++) {
+        curveCtx.beginPath(); curveCtx.moveTo(i*64, 0); curveCtx.lineTo(i*64, 256); curveCtx.stroke();
+        curveCtx.beginPath(); curveCtx.moveTo(0, i*64); curveCtx.lineTo(256, i*64); curveCtx.stroke();
+    }
+    // Curva Quadratica Bezier (da Ombre 0,256 a Luci 256,0 passando per il nostro punto)
+    curveCtx.beginPath();
+    curveCtx.moveTo(0, 256);
+    // Control point per far passare la curva vicina al nostro punto
+    const cx = 2 * curvePoint.x - 128;
+    const cy = 2 * curvePoint.y - 128;
+    curveCtx.quadraticCurveTo(cx, cy, 256, 0);
+    curveCtx.strokeStyle = '#007aff'; curveCtx.lineWidth = 2; curveCtx.stroke();
+    
+    // Disegna il punto
+    curveCtx.beginPath();
+    curveCtx.arc(curvePoint.x, curvePoint.y, 6, 0, Math.PI*2);
+    curveCtx.fillStyle = 'white'; curveCtx.fill();
+    curveCtx.strokeStyle = '#000'; curveCtx.stroke();
+
+    // Ricalcola la LUT (Look-Up Table) per applicare la curva ai pixel velocemente
+    for(let i=0; i<256; i++) {
+        let t = i / 255;
+        // Formula Bezier inversa semplificata
+        let val = Math.pow(1-t, 2)*256 + 2*(1-t)*t*cy + Math.pow(t, 2)*0;
+        curveLUT[i] = Math.max(0, Math.min(255, 256 - val)); // Invertiamo Y per il canvas
+    }
+}
+drawCurveGraph();
+
+curveCanvas.onmousedown = () => isDraggingCurve = true;
+window.addEventListener('mousemove', (e) => {
+    if(isDraggingCurve) {
+        const rect = curveCanvas.getBoundingClientRect();
+        // Mappa la X e Y del mouse allo spazio 0-256 del canvas interno
+        const scaleX = 256 / rect.width;
+        const scaleY = 256 / rect.height;
+        curvePoint.x = Math.max(0, Math.min(256, (e.clientX - rect.left) * scaleX));
+        curvePoint.y = Math.max(0, Math.min(256, (e.clientY - rect.top) * scaleY));
+        drawCurveGraph();
+        updateBaseFilters(); // Applica la curva in tempo reale!
+    }
+});
+window.addEventListener('mouseup', () => isDraggingCurve = false);
+
 const zoomValDisp = document.getElementById('zoom-val');
 const noPhotoMsg = document.getElementById('no-photo-msg');
 
-// --- STATO GLOBALE ---
 let layers = [];
 let activeLayerIndex = -1;
 let history = [];
@@ -21,25 +75,17 @@ let isPanning = false, isSpacePressed = false, isDraggingLayer = false, isCropDr
 let startPan = {x:0, y:0}, startCoords = {x:0, y:0}, currentCoords = {x:0, y:0}, startLayerPos = {x:0, y:0};
 let isCropMode = false, isTextMode = false;
 
-// Selettori Slider sicuri
 const s = {
-    sharp: document.getElementById('sharpness-slider'),
-    temp: document.getElementById('temp-slider'),
-    exp: document.getElementById('exposure-slider'),
-    cont: document.getElementById('contrast-slider'),
-    shadows: document.getElementById('shadows-slider'),
-    sat: document.getElementById('saturation-slider')
+    sharp: document.getElementById('sharpness-slider'), temp: document.getElementById('temp-slider'),
+    exp: document.getElementById('exposure-slider'), cont: document.getElementById('contrast-slider'),
+    shadows: document.getElementById('shadows-slider'), sat: document.getElementById('saturation-slider')
 };
 const v = {
-    sharp: document.getElementById('sharpness-val'),
-    temp: document.getElementById('temp-val'),
-    exp: document.getElementById('exposure-val'),
-    cont: document.getElementById('contrast-val'),
-    shadows: document.getElementById('shadows-val'),
-    sat: document.getElementById('saturation-val')
+    sharp: document.getElementById('sharpness-val'), temp: document.getElementById('temp-val'),
+    exp: document.getElementById('exposure-val'), cont: document.getElementById('contrast-val'),
+    shadows: document.getElementById('shadows-val'), sat: document.getElementById('saturation-val')
 };
 
-// --- STORIA ---
 function saveHistory() {
     if (layers.length === 0) return;
     const state = layers.map(l => ({ ...l, imgData: l.img.src }));
@@ -48,25 +94,18 @@ function saveHistory() {
     historyIndex++;
 }
 
-document.getElementById('undo-btn').onclick = () => {
-    if (historyIndex > 0) { historyIndex--; loadHistoryState(); }
-};
-document.getElementById('redo-btn').onclick = () => {
-    if (historyIndex < history.length - 1) { historyIndex++; loadHistoryState(); }
-};
+document.getElementById('undo-btn').onclick = () => { if (historyIndex > 0) { historyIndex--; loadHistoryState(); }};
+document.getElementById('redo-btn').onclick = () => { if (historyIndex < history.length - 1) { historyIndex++; loadHistoryState(); }};
 
 async function loadHistoryState() {
     const data = JSON.parse(history[historyIndex]);
     const promises = data.map(l => new Promise(res => {
-        const img = new Image();
-        img.onload = () => { l.img = img; res(l); };
-        img.src = l.imgData;
+        const img = new Image(); img.onload = () => { l.img = img; res(l); }; img.src = l.imgData;
     }));
     layers = await Promise.all(promises);
     updateLayersUI(); updateBaseFilters();
 }
 
-// --- ENGINE ---
 function applySharpen(data, w, h, amount) {
     if (amount <= 0) return data;
     const weights = [0, -amount, 0, -amount, 1 + amount * 4, -amount, 0, -amount, 0];
@@ -93,28 +132,24 @@ function applySharpen(data, w, h, amount) {
 function updateBaseFilters() {
     if (layers.length === 0) return;
     const base = layers[0];
-    const tCanvas = document.createElement('canvas');
-    tCanvas.width = base.w; tCanvas.height = base.h;
-    const tCtx = tCanvas.getContext('2d');
-    tCtx.drawImage(base.img, 0, 0);
+    const tCanvas = document.createElement('canvas'); tCanvas.width = base.w; tCanvas.height = base.h;
+    const tCtx = tCanvas.getContext('2d'); tCtx.drawImage(base.img, 0, 0);
 
     let imgData = tCtx.getImageData(0, 0, base.w, base.h);
     let data = imgData.data;
 
-    const temp = parseInt(s.temp?.value || 0);
-    const exp = parseInt(s.exp?.value || 0);
-    const cont = parseInt(s.cont?.value || 0);
-    const shadows = parseInt(s.shadows?.value || 0);
-    const sat = parseInt(s.sat?.value || 100) / 100;
-    const sharp = parseInt(s.sharp?.value || 0) / 100;
-    
+    const temp = parseInt(s.temp?.value || 0), exp = parseInt(s.exp?.value || 0), cont = parseInt(s.cont?.value || 0);
+    const shadows = parseInt(s.shadows?.value || 0), sat = parseInt(s.sat?.value || 100) / 100, sharp = parseInt(s.sharp?.value || 0) / 100;
     const factor = (259 * (cont + 255)) / (255 * (259 - cont));
 
     for (let i = 0; i < data.length; i += 4) {
+        // Applica Curve di Tono tramite LUT
+        data[i] = curveLUT[data[i]];
+        data[i+1] = curveLUT[data[i+1]];
+        data[i+2] = curveLUT[data[i+2]];
+
         data[i] += temp + exp; data[i+1] += exp; data[i+2] += exp - temp;
-        data[i] = factor * (data[i] - 128) + 128;
-        data[i+1] = factor * (data[i+1] - 128) + 128;
-        data[i+2] = factor * (data[i+2] - 128) + 128;
+        data[i] = factor * (data[i] - 128) + 128; data[i+1] = factor * (data[i+1] - 128) + 128; data[i+2] = factor * (data[i+2] - 128) + 128;
         let lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
         if (lum < 128) { let m = (128-lum)/128; data[i]+=shadows*m; data[i+1]+=shadows*m; data[i+2]+=shadows*m; }
         lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
@@ -132,24 +167,14 @@ function updateBaseFilters() {
 
 function renderCanvas() {
     if (layers.length === 0) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(panX, panY); ctx.scale(scale, scale);
+    ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.save(); ctx.translate(panX, panY); ctx.scale(scale, scale);
 
     layers.forEach((l, i) => {
-        if (!l.visible) return;
-        ctx.save();
+        if (!l.visible) return; ctx.save();
         if (i === 0) ctx.drawImage(offCanvas, l.x, l.y, l.w, l.h);
-        else {
-            ctx.globalAlpha = l.opacity || 1;
-            ctx.globalCompositeOperation = l.blendMode || 'source-over';
-            ctx.drawImage(l.img, l.x, l.y, l.w, l.h);
-        }
+        else { ctx.globalAlpha = l.opacity || 1; ctx.globalCompositeOperation = l.blendMode || 'source-over'; ctx.drawImage(l.img, l.x, l.y, l.w, l.h); }
         ctx.restore();
-        if (i === activeLayerIndex && i !== 0) {
-            ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2/scale;
-            ctx.strokeRect(l.x, l.y, l.w, l.h);
-        }
+        if (i === activeLayerIndex && i !== 0) { ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2/scale; ctx.strokeRect(l.x, l.y, l.w, l.h); }
     });
 
     if (isCropMode && (isCropDragging || Math.abs(currentCoords.x - startCoords.x) > 5)) {
@@ -159,7 +184,6 @@ function renderCanvas() {
     ctx.restore();
 }
 
-// --- NAVIGAZIONE ---
 function getRealCoords(e) {
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX || (e.touches ? e.touches[0].clientX : 0)) - rect.left;
@@ -172,36 +196,27 @@ function fitToScreen() {
     const base = layers[0];
     const sX = (workspace.clientWidth - 40) / base.w, sY = (workspace.clientHeight - 40) / base.h;
     scale = Math.min(sX, sY, 1);
-    panX = (workspace.clientWidth - base.w * scale) / 2;
-    panY = (workspace.clientHeight - base.h * scale) / 2;
+    panX = (workspace.clientWidth - base.w * scale) / 2; panY = (workspace.clientHeight - base.h * scale) / 2;
     zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas();
 }
 
 canvas.onwheel = (e) => {
-    e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const oldScale = scale;
-    scale *= (e.deltaY < 0 ? 1.1 : 0.9);
-    scale = Math.max(0.05, Math.min(scale, 10));
-    panX = mx - (mx - panX) * (scale / oldScale);
-    panY = my - (my - panY) * (scale / oldScale);
+    e.preventDefault(); const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top; const oldScale = scale;
+    scale *= (e.deltaY < 0 ? 1.1 : 0.9); scale = Math.max(0.05, Math.min(scale, 10));
+    panX = mx - (mx - panX) * (scale / oldScale); panY = my - (my - panY) * (scale / oldScale);
     zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas();
 };
 
-// --- EVENTI CARICAMENTO ---
 document.getElementById('upload-btn').onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
         const img = new Image();
         img.onload = () => {
             layers = [{ img, w: img.width, h: img.height, x: 0, y: 0, visible: true, name: "Sfondo", opacity: 1, blendMode: 'source-over' }];
-            activeLayerIndex = 0;
-            canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight;
-            noPhotoMsg.style.display = 'none'; canvas.style.display = 'block';
-            document.querySelector('.zoom-bar').style.display = 'flex';
+            activeLayerIndex = 0; canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight;
+            noPhotoMsg.style.display = 'none'; canvas.style.display = 'block'; document.querySelector('.zoom-bar').style.display = 'flex';
             saveHistory(); updateBaseFilters(); fitToScreen(); updateLayersUI();
         };
         img.src = ev.target.result;
@@ -210,8 +225,7 @@ document.getElementById('upload-btn').onchange = (e) => {
 };
 
 document.getElementById('add-layer-btn').onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
         const img = new Image();
@@ -224,7 +238,6 @@ document.getElementById('add-layer-btn').onchange = (e) => {
     reader.readAsDataURL(file);
 };
 
-// --- INPUTS ---
 canvas.onmousedown = (e) => {
     if (layers.length === 0) return;
     const coords = getRealCoords(e);
@@ -257,11 +270,9 @@ window.onmousemove = (e) => {
 };
 window.onmouseup = () => { isPanning = isDraggingLayer = isCropDragging = false; };
 
-// --- TOOLS ---
 document.getElementById('zoom-fit').onclick = fitToScreen;
-document.getElementById('zoom-in').onclick = () => { scale *= 1.2; updateZoomUI(); };
-document.getElementById('zoom-out').onclick = () => { scale /= 1.2; updateZoomUI(); };
-function updateZoomUI() { zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas(); }
+document.getElementById('zoom-in').onclick = () => { scale *= 1.2; zoomValDisp.textContent = Math.round(scale*100)+'%'; renderCanvas(); };
+document.getElementById('zoom-out').onclick = () => { scale /= 1.2; zoomValDisp.textContent = Math.round(scale*100)+'%'; renderCanvas(); };
 
 document.getElementById('rotate-btn').onclick = () => {
     const t = document.createElement('canvas'); t.width = layers[0].h; t.height = layers[0].w;
@@ -283,16 +294,15 @@ document.getElementById('crop-btn').onclick = () => {
 
 document.getElementById('text-btn').onclick = () => { isTextMode = !isTextMode; document.getElementById('text-btn').classList.toggle('active-action', isTextMode); };
 
-// PRESETS
 document.querySelectorAll('.preset-card').forEach(b => {
     b.onclick = (e) => {
         const p = e.target.dataset.preset;
-        if (p==='normal') { s.temp.value=0; s.exp.value=0; s.cont.value=0; s.shadows.value=0; s.sat.value=100; s.sharp.value=0; }
-        if (p==='vintage') { s.temp.value=15; s.exp.value=5; s.cont.value=-10; s.shadows.value=15; s.sat.value=80; s.sharp.value=15; }
-        if (p==='cinematic') { s.temp.value=-10; s.exp.value=-5; s.cont.value=20; s.shadows.value=20; s.sat.value=90; s.sharp.value=25; }
-        if (p==='bw') { s.sat.value=0; s.exp.value=5; s.sharp.value=30; s.cont.value=15; }
+        if (p==='normal') { s.temp.value=0; s.exp.value=0; s.cont.value=0; s.shadows.value=0; s.sat.value=100; s.sharp.value=0; curvePoint={x:128, y:128}; }
+        if (p==='vintage') { s.temp.value=15; s.exp.value=5; s.cont.value=-10; s.shadows.value=15; s.sat.value=80; s.sharp.value=15; curvePoint={x:128, y:100}; }
+        if (p==='cinematic') { s.temp.value=-10; s.exp.value=-5; s.cont.value=20; s.shadows.value=20; s.sat.value=90; s.sharp.value=25; curvePoint={x:128, y:150}; }
+        if (p==='bw') { s.sat.value=0; s.exp.value=5; s.sharp.value=30; s.cont.value=15; curvePoint={x:128, y:120}; }
         Object.keys(s).forEach(k => { if(s[k] && v[k]) v[k].textContent = s[k].value + (k==='sat'?'%':''); });
-        updateBaseFilters();
+        drawCurveGraph(); updateBaseFilters();
     };
 });
 
@@ -308,23 +318,25 @@ function drawHistogram(data) {
 document.getElementById('download-btn').onclick = () => {
     const e = document.createElement('canvas'); e.width = layers[0].w; e.height = layers[0].h;
     const ec = e.getContext('2d');
-    layers.forEach((l, i) => { if(l.visible) ec.drawImage(i===0?offCanvas:l.img, l.x, l.y, l.w, l.h); });
+    layers.forEach((l, i) => { if(!l.visible) return; if(i===0) ec.drawImage(offCanvas, 0, 0); else { ec.globalAlpha = l.opacity; ec.globalCompositeOperation = l.blendMode; ec.drawImage(l.img, l.x, l.y, l.w, l.h); } });
     const a = document.createElement('a'); a.download = 'FastPhoto_Pro.png'; a.href = e.toDataURL(); a.click();
 };
 
 function updateLayersUI() {
-    const list = document.getElementById('layers-list');
-    list.innerHTML = '';
+    const list = document.getElementById('layers-list'); list.innerHTML = '';
     layers.forEach((l, i) => {
         const div = document.createElement('div'); div.className = `layer-item ${i === activeLayerIndex ? 'active' : ''}`;
         div.innerHTML = `<span><i class="fa-solid fa-layer-group"></i> ${l.name}</span> <i class="fa-solid ${l.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>`;
-        div.onclick = () => { activeLayerIndex = i; updateLayersUI(); renderCanvas(); };
+        div.onclick = (e) => { if(e.target.classList.contains('fa-eye')||e.target.classList.contains('fa-eye-slash')) l.visible = !l.visible; else activeLayerIndex = i; updateLayersUI(); renderCanvas(); };
         list.appendChild(div);
     });
     document.getElementById('layer-settings').style.display = activeLayerIndex > 0 ? 'block' : 'none';
 }
 
+document.getElementById('layer-opacity').oninput = (e) => { if(activeLayerIndex>0) { layers[activeLayerIndex].opacity = e.target.value/100; renderCanvas(); }};
+document.getElementById('layer-blend').onchange = (e) => { if(activeLayerIndex>0) { layers[activeLayerIndex].blendMode = e.target.value; renderCanvas(); }};
+
 window.onkeydown = (e) => { if(e.code==='Space') { isSpacePressed=true; canvas.style.cursor='grab'; } };
 window.onkeyup = (e) => { if(e.code==='Space') { isSpacePressed=false; canvas.style.cursor='default'; } };
 window.onresize = () => { canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight; renderCanvas(); };
-
+document.getElementById('reset-btn').onclick = () => location.reload();

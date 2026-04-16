@@ -38,7 +38,15 @@
 
         <aside class="side-panel">
             <div class="panel-section">
-                <div class="histogram-container"><canvas id="hist-canvas" width="310" height="100"></canvas></div>
+                <div class="histogram-container"><canvas id="hist-canvas" width="310" height="80"></canvas></div>
+            </div>
+
+            <div class="panel-section">
+                <h2><i class="fa-solid fa-bezier-curve"></i> Curve di Tono</h2>
+                <div class="curve-container">
+                    <canvas id="curve-canvas" width="256" height="256"></canvas>
+                    <p class="curve-hint">Trascina il punto centrale per modificare le luci/ombre</p>
+                </div>
             </div>
 
             <div class="panel-section">
@@ -72,7 +80,7 @@
             </div>
 
             <div class="panel-section">
-                <h2><i class="fa-solid fa-sliders"></i> Sviluppo Sfondo</h2>
+                <h2><i class="fa-solid fa-sliders"></i> Sviluppo Base</h2>
                 <div class="slider-group pro-slider">
                     <div class="slider-info"><span>✨ Nitidezza</span><span id="sharpness-val">0</span></div>
                     <input type="range" id="sharpness-slider" min="0" max="100" value="0">
