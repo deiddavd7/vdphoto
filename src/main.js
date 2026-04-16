@@ -10,6 +10,7 @@ const histCtx = histCanvas.getContext('2d');
 
 const zoomValDisp = document.getElementById('zoom-val');
 const noPhotoMsg = document.getElementById('no-photo-msg');
+const exifBar = document.getElementById('exif-bar');
 
 // --- CURVE DI TONO ---
 const curveCanvas = document.getElementById('curve-canvas');
@@ -64,6 +65,7 @@ let isCropMode = false, isCropDragging = false;
 let isTextMode = false;
 let isCloneMode = false, isCloning = false;
 let cloneSource = null, cloneOffset = {dx:0, dy:0}, hoverCoords = null;
+let isBrushMode = false, isBrushing = false;
 
 // Sliders completi (Effetti, Nitidezza, Colori, RAW)
 const s = {
@@ -84,7 +86,6 @@ const v = {
 function saveHistory() {
     if (layers.length === 0) return;
     const state = layers.map(l => {
-        // Se il livello ha una workingCanvas (es. timbro clone), la salviamo come stringa base64
         let imgDataSrc = l.img.src;
         if(l.workingCanvas) { imgDataSrc = l.workingCanvas.toDataURL(); }
         return { ...l, imgData: imgDataSrc, workingCanvas: null }; 
@@ -139,8 +140,6 @@ function updateBaseFilters() {
     const base = layers[0];
     const tCanvas = document.createElement('canvas'); tCanvas.width = base.w; tCanvas.height = base.h;
     const tCtx = tCanvas.getContext('2d'); 
-    
-    // Disegna l'immagine base (che include eventuali modifiche del timbro clone)
     tCtx.drawImage(base.workingCanvas || base.img, 0, 0);
 
     let imgData = tCtx.getImageData(0, 0, base.w, base.h);
@@ -156,24 +155,17 @@ function updateBaseFilters() {
     const factor = (259 * (cont + 255)) / (255 * (259 - cont));
 
     for (let i = 0; i < data.length; i += 4) {
-        // Curve
         data[i] = curveLUT[data[i]]; data[i+1] = curveLUT[data[i+1]]; data[i+2] = curveLUT[data[i+2]];
         
-        // Temp/Tint/Exp
         data[i] += temp + exp; data[i+1] += tint + exp; data[i+2] += exp - temp;
-        
-        // Contrast
         data[i] = factor * (data[i] - 128) + 128; data[i+1] = factor * (data[i+1] - 128) + 128; data[i+2] = factor * (data[i+2] - 128) + 128;
         
-        // Clamp
         data[i]=Math.min(255,Math.max(0,data[i])); data[i+1]=Math.min(255,Math.max(0,data[i+1])); data[i+2]=Math.min(255,Math.max(0,data[i+2]));
         
-        // Shadows / Highlights
         let lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
         if (shadows !== 0 && lum < 128) { let m = (128-lum)/128; data[i]+=shadows*m; data[i+1]+=shadows*m; data[i+2]+=shadows*m; }
         if (high !== 0 && lum > 128) { let m = (lum-128)/127; data[i]-=high*m; data[i+1]-=high*m; data[i+2]-=high*m; }
         
-        // Saturation
         lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
         data[i]=lum+(data[i]-lum)*sat; data[i+1]=lum+(data[i+1]-lum)*sat; data[i+2]=lum+(data[i+2]-lum)*sat;
     }
@@ -184,7 +176,6 @@ function updateBaseFilters() {
     offCanvas.width = base.w; offCanvas.height = base.h;
     offCtx.clearRect(0,0,base.w,base.h);
     
-    // Alpha Blending con originale (Intensità Effetti)
     offCtx.drawImage(base.workingCanvas || base.img, 0, 0);
     offCtx.globalAlpha = effOp;
     offCtx.drawImage(tCanvas, 0, 0);
@@ -211,13 +202,12 @@ function renderCanvas() {
         ctx.strokeRect(startCoords.x, startCoords.y, currentCoords.x - startCoords.x, currentCoords.y - startCoords.y);
     }
     
-    // UI del Timbro Clone
-    if (isCloneMode && hoverCoords && layers.length > 0) {
-        const brush = parseInt(document.getElementById('clone-size').value);
+    if ((isCloneMode || isBrushMode) && hoverCoords && layers.length > 0) {
+        const brush = isCloneMode ? parseInt(document.getElementById('clone-size').value) : parseInt(document.getElementById('brush-size').value);
         ctx.beginPath(); ctx.arc(hoverCoords.x, hoverCoords.y, brush, 0, Math.PI*2);
         ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.5/scale; ctx.stroke();
         
-        if (cloneSource) {
+        if (isCloneMode && cloneSource) {
             let sx = cloneSource.x, sy = cloneSource.y;
             if (isCloning) { sx = hoverCoords.x + cloneOffset.dx; sy = hoverCoords.y + cloneOffset.dy; }
             ctx.beginPath(); ctx.arc(sx, sy, brush, 0, Math.PI*2);
@@ -251,23 +241,55 @@ canvas.onwheel = (e) => {
     zoomValDisp.textContent = Math.round(scale * 100) + '%'; renderCanvas();
 };
 
-document.getElementById('upload-btn').onchange = (e) => {
+// --- CARICAMENTO CON EXIF ---
+document.getElementById('upload-btn').onchange = async (e) => {
     const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
-            const wCanvas = document.createElement('canvas'); wCanvas.width = img.width; wCanvas.height = img.height;
-            wCanvas.getContext('2d').drawImage(img, 0, 0);
-            layers = [{ id: 'base', img, workingCanvas: wCanvas, w: img.width, h: img.height, x: 0, y: 0, visible: true, name: "Sfondo", opacity: 1, blendMode: 'source-over' }];
-            activeLayerIndex = 0; canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight;
-            noPhotoMsg.style.display = 'none'; canvas.style.display = 'block'; document.querySelector('.zoom-bar').style.display = 'flex';
-            saveHistory(); updateBaseFilters(); fitToScreen(); updateLayersUI();
-        };
-        img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+
+    // Lettura Dati EXIF
+    try {
+        const exifData = await exifr.parse(file, {tiff: true, ifd0: true, exif: true});
+        if(exifData) {
+            exifBar.style.display = 'flex';
+            document.getElementById('exif-camera').innerHTML = `<i class="fa-solid fa-camera"></i> ${exifData.Make || ''} ${exifData.Model || 'Camera'} `;
+            const fNum = exifData.FNumber ? `f/${exifData.FNumber}` : '';
+            const expTime = exifData.ExposureTime ? `1/${Math.round(1/exifData.ExposureTime)}s` : '';
+            const iso = exifData.ISO ? `ISO ${exifData.ISO}` : '';
+            document.getElementById('exif-settings').innerHTML = `<i class="fa-solid fa-sliders"></i> ${fNum} | ${expTime} | ${iso}`;
+        }
+    } catch(err) { exifBar.style.display = 'none'; console.log('No EXIF data found'); }
+
+    // Controllo RAW ed Estrazione JPEG Preview
+    let targetSrc = '';
+    const isRaw = file.name.toLowerCase().match(/\.(rw2|cr2|nef|arw)$/);
+    
+    if (isRaw) {
+        try {
+            targetSrc = await exifr.thumbnailUrl(file);
+            if(!targetSrc) throw new Error("Anteprima non trovata");
+        } catch(err) {
+            alert("Impossibile estrarre l'anteprima da questo file RAW. Prova con un JPEG o usa un altro file RAW.");
+            return;
+        }
+    } else {
+        // Se non è RAW, carica normalmente
+        targetSrc = URL.createObjectURL(file);
+    }
+
+    loadToApp(targetSrc);
 };
+
+function loadToApp(src) {
+    const img = new Image();
+    img.onload = () => {
+        const wCanvas = document.createElement('canvas'); wCanvas.width = img.width; wCanvas.height = img.height;
+        wCanvas.getContext('2d').drawImage(img, 0, 0);
+        layers = [{ id: 'base', img, workingCanvas: wCanvas, w: img.width, h: img.height, x: 0, y: 0, visible: true, name: "Sfondo", opacity: 1, blendMode: 'source-over' }];
+        activeLayerIndex = 0; canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight;
+        noPhotoMsg.style.display = 'none'; canvas.style.display = 'block'; document.querySelector('.zoom-bar').style.display = 'flex';
+        saveHistory(); updateBaseFilters(); fitToScreen(); updateLayersUI();
+    };
+    img.src = src;
+}
 
 document.getElementById('add-layer-btn').onchange = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -290,12 +312,11 @@ canvas.onmousedown = (e) => {
     
     if (isCloneMode) {
         if (e.altKey) { cloneSource = {...coords}; renderCanvas(); return; }
-        if (cloneSource) {
-            isCloning = true; cloneOffset = { dx: cloneSource.x - coords.x, dy: cloneSource.y - coords.y };
-            applyCloneStroke(coords); // Primo colpo di pennello
-        }
+        if (cloneSource) { isCloning = true; cloneOffset = { dx: cloneSource.x - coords.x, dy: cloneSource.y - coords.y }; applyCloneStroke(coords); }
         return;
     }
+
+    if (isBrushMode) { isBrushing = true; applyBrushStroke(coords); return; }
 
     if (isTextMode) {
         const txt = document.getElementById('watermark-text').value; if (!txt) return;
@@ -324,26 +345,43 @@ function applyCloneStroke(coords) {
     
     ctxW.save();
     ctxW.beginPath(); ctxW.arc(coords.x, coords.y, brush, 0, Math.PI*2); ctxW.clip();
-    // Clona i pixel base (Senza filtri) sul working canvas
     ctxW.drawImage(layers[0].workingCanvas, sx - brush, sy - brush, brush*2, brush*2, coords.x - brush, coords.y - brush, brush*2, brush*2);
     ctxW.restore();
+    updateBaseFilters();
+}
+
+function applyBrushStroke(coords) {
+    if(!layers[0].workingCanvas) return;
+    const ctxW = layers[0].workingCanvas.getContext('2d');
+    const mode = document.getElementById('brush-mode').value;
+    const brush = parseInt(document.getElementById('brush-size').value);
+    const flow = parseInt(document.getElementById('brush-flow').value) / 100;
     
-    updateBaseFilters(); // Aggiorna in tempo reale
+    ctxW.save();
+    const grad = ctxW.createRadialGradient(coords.x, coords.y, 0, coords.x, coords.y, brush);
+    if(mode === 'dodge') { grad.addColorStop(0, `rgba(255,255,255,${flow})`); grad.addColorStop(1, 'rgba(255,255,255,0)'); ctxW.globalCompositeOperation = 'soft-light'; }
+    if(mode === 'burn') { grad.addColorStop(0, `rgba(0,0,0,${flow})`); grad.addColorStop(1, 'rgba(0,0,0,0)'); ctxW.globalCompositeOperation = 'soft-light'; }
+    
+    ctxW.fillStyle = grad;
+    ctxW.beginPath(); ctxW.arc(coords.x, coords.y, brush, 0, Math.PI*2); ctxW.fill();
+    ctxW.restore();
+    updateBaseFilters();
 }
 
 window.onmousemove = (e) => {
     hoverCoords = getRealCoords(e);
     if (isPanning) { panX = e.clientX - startPan.x; panY = e.clientY - startPan.y; renderCanvas(); }
     else if (isCloning) { applyCloneStroke(hoverCoords); }
+    else if (isBrushing) { applyBrushStroke(hoverCoords); }
     else if (isDraggingLayer) {
         const l = layers[activeLayerIndex]; l.x = startLayerPos.lx + (hoverCoords.x - startLayerPos.mx); l.y = startLayerPos.ly + (hoverCoords.y - startLayerPos.my); renderCanvas();
     } else if (isCropDragging) { currentCoords = hoverCoords; renderCanvas(); }
-    else if (isCloneMode) { renderCanvas(); } // Aggiorna solo il cursore del timbro
+    else if (isCloneMode || isBrushMode) { renderCanvas(); }
 };
 
 window.onmouseup = () => { 
-    if(isCloning) { saveHistory(); } // Salva solo quando finisci di spennellare
-    isPanning = isDraggingLayer = isCropDragging = isCloning = false; 
+    if(isCloning || isBrushing) { saveHistory(); }
+    isPanning = isDraggingLayer = isCropDragging = isCloning = isBrushing = false; 
 };
 
 // --- STRUMENTI UI ---
@@ -351,14 +389,25 @@ document.getElementById('zoom-fit').onclick = fitToScreen;
 document.getElementById('zoom-in').onclick = () => { scale *= 1.2; zoomValDisp.textContent = Math.round(scale*100)+'%'; renderCanvas(); };
 document.getElementById('zoom-out').onclick = () => { scale /= 1.2; zoomValDisp.textContent = Math.round(scale*100)+'%'; renderCanvas(); };
 
-document.getElementById('clone-btn').onclick = () => {
-    isCloneMode = !isCloneMode; 
-    document.getElementById('clone-btn').classList.toggle('active-action', isCloneMode);
-    document.getElementById('clone-settings').style.display = isCloneMode ? 'block' : 'none';
-    canvas.style.cursor = isCloneMode ? 'crosshair' : 'default';
-    if(!isCloneMode) { cloneSource = null; renderCanvas(); }
-};
+function toggleTool(toolBtn, settingsId, modeFlag) {
+    isCropMode = false; isTextMode = false; isCloneMode = false; isBrushMode = false;
+    document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active-action'));
+    document.getElementById('clone-settings').style.display = 'none';
+    document.getElementById('brush-settings').style.display = 'none';
+    canvas.style.cursor = 'default';
+    if(modeFlag) {
+        toolBtn.classList.add('active-action');
+        if(settingsId) document.getElementById(settingsId).style.display = 'block';
+        canvas.style.cursor = 'crosshair';
+    }
+}
+
+document.getElementById('clone-btn').onclick = () => { isCloneMode = !isCloneMode; toggleTool(document.getElementById('clone-btn'), 'clone-settings', isCloneMode); if(!isCloneMode) cloneSource = null; renderCanvas(); };
 document.getElementById('clone-size').oninput = (e) => { document.getElementById('clone-size-val').textContent = e.target.value + 'px'; renderCanvas(); };
+
+document.getElementById('brush-btn').onclick = () => { isBrushMode = !isBrushMode; toggleTool(document.getElementById('brush-btn'), 'brush-settings', isBrushMode); renderCanvas(); };
+document.getElementById('brush-size').oninput = (e) => { document.getElementById('brush-size-val').textContent = e.target.value + 'px'; renderCanvas(); };
+document.getElementById('brush-flow').oninput = (e) => { document.getElementById('brush-flow-val').textContent = e.target.value + '%'; };
 
 document.getElementById('rotate-btn').onclick = () => {
     if(layers.length===0) return;
@@ -368,8 +417,7 @@ document.getElementById('rotate-btn').onclick = () => {
 };
 
 document.getElementById('crop-btn').onclick = () => {
-    if(layers.length===0) return;
-    isCropMode = !isCropMode; document.getElementById('crop-btn').classList.toggle('active-action', isCropMode);
+    isCropMode = !isCropMode; toggleTool(document.getElementById('crop-btn'), null, isCropMode);
     if (!isCropMode && Math.abs(currentCoords.x - startCoords.x) > 20) {
         const x = Math.min(startCoords.x, currentCoords.x), y = Math.min(startCoords.y, currentCoords.y), w = Math.abs(currentCoords.x - startCoords.x), h = Math.abs(currentCoords.y - startCoords.y);
         const t = document.createElement('canvas'); t.width = w; t.height = h;
@@ -378,7 +426,7 @@ document.getElementById('crop-btn').onclick = () => {
     }
 };
 
-document.getElementById('text-btn').onclick = () => { isTextMode = !isTextMode; document.getElementById('text-btn').classList.toggle('active-action', isTextMode); };
+document.getElementById('text-btn').onclick = () => { isTextMode = !isTextMode; toggleTool(document.getElementById('text-btn'), null, isTextMode); canvas.style.cursor = isTextMode ? 'text' : 'default'; };
 
 document.querySelectorAll('.preset-card').forEach(b => {
     b.onclick = (e) => {
@@ -424,7 +472,7 @@ document.getElementById('layer-blend').onchange = (e) => { if(activeLayerIndex>0
 document.getElementById('del-layer-btn').onclick = () => { if(activeLayerIndex>0) { layers.splice(activeLayerIndex, 1); activeLayerIndex=0; updateLayersUI(); renderCanvas(); saveHistory(); } };
 
 window.onkeydown = (e) => { if(e.code==='Space') { isSpacePressed=true; canvas.style.cursor='grab'; } };
-window.onkeyup = (e) => { if(e.code==='Space') { isSpacePressed=false; canvas.style.cursor= isCloneMode ? 'crosshair' : 'default'; } };
+window.onkeyup = (e) => { if(e.code==='Space') { isSpacePressed=false; canvas.style.cursor= (isCloneMode||isBrushMode) ? 'crosshair' : 'default'; } };
 window.onresize = () => { if(layers.length > 0){ canvas.width = workspace.clientWidth; canvas.height = workspace.clientHeight; renderCanvas();} };
 document.getElementById('reset-btn').onclick = () => location.reload();
 

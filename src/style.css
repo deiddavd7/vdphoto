@@ -5,7 +5,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
 body { background: var(--bg-deep); color: var(--text); height: 100vh; overflow: hidden; }
 
-.top-bar { height: 60px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 100; }
+.top-bar { height: 60px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; z-index: 100; position: relative; }
 .logo { font-weight: 800; font-size: 1.2rem; }
 .logo span { color: var(--accent); font-size: 0.7rem; border: 1px solid var(--accent); padding: 2px 5px; border-radius: 4px; margin-left: 5px; }
 
@@ -17,6 +17,12 @@ body { background: var(--bg-deep); color: var(--text); height: 100vh; overflow: 
 
 .app-container { display: flex; height: calc(100vh - 60px); }
 .editor-workspace { flex: 1; position: relative; overflow: hidden; display: flex; justify-content: center; align-items: center; background-image: radial-gradient(#1a1a1a 1px, transparent 1px); background-size: 30px 30px; }
+
+/* NUOVO: Stile Barra Dati EXIF */
+.exif-bar { position: absolute; top: 15px; left: 20px; background: rgba(20,20,20,0.85); backdrop-filter: blur(10px); padding: 8px 15px; border-radius: 8px; border: 1px solid var(--border); display: flex; gap: 20px; font-size: 0.75rem; color: #aaa; z-index: 50; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+.exif-bar span { display: flex; align-items: center; gap: 6px; }
+.exif-bar i { color: var(--accent); }
+
 #photo-canvas { box-shadow: 0 0 60px rgba(0,0,0,0.7); display: none; position: absolute; }
 #no-photo-msg { text-align: center; color: var(--text-dim); }
 #no-photo-msg i { font-size: 5rem; margin-bottom: 20px; opacity: 0.1; }

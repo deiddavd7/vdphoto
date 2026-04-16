@@ -6,6 +6,7 @@
     <title>FastPhoto Pro - Studio Edition</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
@@ -16,17 +17,22 @@
                 <button id="undo-btn" class="icon-btn" title="Annulla"><i class="fa-solid fa-rotate-left"></i></button>
                 <button id="redo-btn" class="icon-btn" title="Ripristina"><i class="fa-solid fa-rotate-right"></i></button>
             </div>
-            <label for="upload-btn" class="main-cta"><i class="fa-solid fa-image"></i> Apri Sfondo</label>
-            <input type="file" id="upload-btn" accept="image/*">
+            <label for="upload-btn" class="main-cta"><i class="fa-solid fa-image"></i> Apri Sfondo o RAW</label>
+            <input type="file" id="upload-btn" accept="image/*,.rw2,.cr2,.nef,.arw">
         </div>
     </header>
 
     <div class="app-container">
         <main class="editor-workspace" id="workspace">
+            <div id="exif-bar" class="exif-bar" style="display: none;">
+                <span id="exif-camera"><i class="fa-solid fa-camera"></i> ---</span>
+                <span id="exif-settings"><i class="fa-solid fa-sliders"></i> ---</span>
+            </div>
+
             <canvas id="photo-canvas"></canvas>
             <div id="no-photo-msg">
                 <i class="fa-solid fa-mountain-sun"></i>
-                <p>Carica una foto per iniziare il montaggio</p>
+                <p>Carica una foto (JPG, PNG o RW2) per iniziare</p>
             </div>
             <div class="zoom-bar" style="display: none;">
                 <button id="zoom-out"><i class="fa-solid fa-minus"></i></button>
@@ -43,15 +49,28 @@
 
             <div class="panel-section">
                 <h2><i class="fa-solid fa-toolbox"></i> Strumenti Rapidi</h2>
-                <div class="btn-row">
+                <div class="btn-row" style="flex-wrap: wrap;">
                     <button id="crop-btn" class="btn-tool"><i class="fa-solid fa-crop"></i> Taglia</button>
                     <button id="rotate-btn" class="btn-tool"><i class="fa-solid fa-rotate"></i> Ruota</button>
                     <button id="clone-btn" class="btn-tool"><i class="fa-solid fa-stamp"></i> Clona</button>
+                    <button id="brush-btn" class="btn-tool"><i class="fa-solid fa-paintbrush"></i> Pennello</button>
                 </div>
+                
                 <div id="clone-settings" style="display:none; margin-top: 10px; padding: 10px; background: #1c1c1c; border-radius: 8px; border: 1px solid #333;">
-                    <div class="slider-info"><span>Dim. Pennello</span><span id="clone-size-val">20px</span></div>
+                    <div class="slider-info"><span>Dim. Timbro</span><span id="clone-size-val">20px</span></div>
                     <input type="range" id="clone-size" min="5" max="150" value="20">
                     <p style="font-size:0.65rem; color:#888; margin-top:8px; text-align:center;">💡 <b>ALT + Clic</b> per campionare</p>
+                </div>
+
+                <div id="brush-settings" style="display:none; margin-top: 10px; padding: 10px; background: #1c1c1c; border-radius: 8px; border: 1px solid #333;">
+                    <select id="brush-mode" class="pro-select" style="margin-top:0; margin-bottom: 10px;">
+                        <option value="dodge">☀️ Schiarisci (Dodge)</option>
+                        <option value="burn">🌑 Scurisci (Burn)</option>
+                    </select>
+                    <div class="slider-info"><span>Dim. Pennello</span><span id="brush-size-val">50px</span></div>
+                    <input type="range" id="brush-size" min="10" max="300" value="50">
+                    <div class="slider-info" style="margin-top: 8px;"><span>Intensità</span><span id="brush-flow-val">10%</span></div>
+                    <input type="range" id="brush-flow" min="1" max="50" value="10">
                 </div>
             </div>
 
@@ -103,7 +122,7 @@
             </div>
 
             <div class="panel-section">
-                <h2><i class="fa-solid fa-sliders"></i> Sviluppo RAW (G97)</h2>
+                <h2><i class="fa-solid fa-sliders"></i> Sviluppo Base</h2>
                 
                 <div class="slider-group" style="padding-bottom: 10px; border-bottom: 1px solid #333; margin-bottom: 15px;">
                     <div class="slider-info"><span style="color:#007aff; font-weight:bold;">🌟 Intensità Effetti</span><span id="effect-opacity-val">100%</span></div>
