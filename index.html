@@ -10,29 +10,80 @@
     <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
+    <div id="export-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-file-export"></i> Impostazioni Esportazione</h2>
+                <button id="close-export" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="control-group">
+                    <label>Formato File</label>
+                    <select id="export-format" class="pro-select">
+                        <option value="image/jpeg">JPEG (Ottimizzato)</option>
+                        <option value="image/png">PNG (Massima Qualità)</option>
+                        <option value="image/webp">WebP (Moderno)</option>
+                    </select>
+                </div>
+                <div id="quality-group" class="control-group">
+                    <div class="slider-info"><span>Qualità Compressione</span><span id="export-quality-val">90%</span></div>
+                    <input type="range" id="export-quality" min="10" max="100" value="90">
+                </div>
+                <div class="control-group">
+                    <div class="slider-info"><span>Risoluzione (Scala)</span><span id="export-scale-val">100%</span></div>
+                    <input type="range" id="export-scale" min="10" max="100" value="100">
+                </div>
+                <div class="export-stats">
+                    <p id="export-res-info">Risoluzione: ---</p>
+                    <p id="export-usage-info" style="margin-top:5px; color:#fff;">Destinazione: Stampa / Archivio</p>
+                </div>
+            </div>
+            <button id="confirm-export-btn" class="btn-save" style="margin-top:15px; width:100%;">Scarica Immagine</button>
+        </div>
+    </div>
+
     <header class="top-bar">
         <div class="logo"><i class="fa-solid fa-camera-retro"></i> FastPhoto <span>PRO</span></div>
         <div class="top-controls">
+            <button id="toggle-library-btn" class="main-cta" style="background: #2a3a50;"><i class="fa-solid fa-folder-tree"></i> Progetti</button>
             <div class="history-group">
                 <button id="undo-btn" class="icon-btn" title="Annulla"><i class="fa-solid fa-rotate-left"></i></button>
                 <button id="redo-btn" class="icon-btn" title="Ripristina"><i class="fa-solid fa-rotate-right"></i></button>
             </div>
-            <label for="upload-btn" class="main-cta"><i class="fa-solid fa-image"></i> Apri Sfondo o RAW</label>
-            <input type="file" id="upload-btn" accept="image/*,.rw2,.cr2,.nef,.arw">
+            <label for="upload-btn" class="main-cta"><i class="fa-solid fa-image"></i> Apri Foto</label>
+            <input type="file" id="upload-btn" accept="image/*,.rw2,.cr2,.nef,.arw" style="display:none;">
         </div>
     </header>
 
     <div class="app-container">
+        <aside class="library-panel" id="library-panel" style="display: none;">
+            <div class="library-header">
+                <h2><i class="fa-solid fa-book-open"></i> I Miei Lavori</h2>
+                <button id="new-folder-btn" class="icon-btn" title="Nuova Cartella"><i class="fa-solid fa-folder-plus"></i></button>
+            </div>
+            <div id="folders-list" class="folders-list"></div>
+            <div id="active-folder-view" class="active-folder-view" style="display: none;">
+                <div class="folder-view-header">
+                    <button id="back-folders-btn" class="icon-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <h3 id="current-folder-name">---</h3>
+                </div>
+                <div class="folder-actions">
+                    <label for="upload-to-folder" class="btn-sub" style="background: #007aff; color: white; border: none; width: 100%; display: block; margin-bottom: 10px; text-align:center; padding:10px;"><i class="fa-solid fa-plus"></i> Aggiungi Foto</label>
+                    <input type="file" id="upload-to-folder" accept="image/*,.rw2" multiple style="display:none;">
+                </div>
+                <div id="folder-photos-grid" class="photos-grid"></div>
+            </div>
+        </aside>
+
         <main class="editor-workspace" id="workspace">
             <div id="exif-bar" class="exif-bar" style="display: none;">
                 <span id="exif-camera"><i class="fa-solid fa-camera"></i> ---</span>
                 <span id="exif-settings"><i class="fa-solid fa-sliders"></i> ---</span>
             </div>
-
             <canvas id="photo-canvas"></canvas>
             <div id="no-photo-msg">
                 <i class="fa-solid fa-mountain-sun"></i>
-                <p>Carica una foto (JPG, PNG o RW2) per iniziare</p>
+                <p>Seleziona una foto dai Progetti o clicca Apri</p>
             </div>
             <div class="zoom-bar" style="display: none;">
                 <button id="zoom-out"><i class="fa-solid fa-minus"></i></button>
@@ -54,9 +105,8 @@
                     <label for="lut-upload" class="btn-tool" style="cursor:pointer; text-align:center; background: #2a3a50; border: none; margin: 0;"><i class="fa-solid fa-cube"></i> Carica .cube</label>
                     <input type="file" id="lut-upload" accept=".cube" style="display:none;">
                 </div>
-                <div id="custom-presets-grid" class="presets-grid">
-                    </div>
-                <button id="remove-lut-btn" class="btn-sub" style="display: none; margin-top: 10px; width: 100%; color: #ff3b30; border-color: #ff3b30;"><i class="fa-solid fa-ban"></i> Rimuovi LUT Attivo</button>
+                <div id="custom-presets-grid" class="presets-grid"></div>
+                <button id="remove-lut-btn" class="btn-sub" style="display: none; margin-top: 10px; width: 100%; color: #ff3b30; border-color: #ff3b30;"><i class="fa-solid fa-ban"></i> Rimuovi LUT</button>
             </div>
 
             <div class="panel-section">
@@ -90,7 +140,7 @@
                 <h2><i class="fa-solid fa-bezier-curve"></i> Curve di Tono</h2>
                 <div class="curve-container">
                     <canvas id="curve-canvas" width="256" height="256"></canvas>
-                    <p class="curve-hint">Trascina il punto centrale per modificare luci/ombre</p>
+                    <p class="curve-hint">Trascina il punto per modificare luci/ombre</p>
                 </div>
             </div>
 
@@ -155,8 +205,8 @@
             </div>
 
             <div class="footer-actions">
-                <button id="reset-btn" class="btn reset">🔄 Resetta Tutto</button>
-                <button id="download-btn" class="btn-save"><i class="fa-solid fa-file-export"></i> Esporta PNG</button>
+                <button id="open-export-btn" class="btn-save"><i class="fa-solid fa-download"></i> Esporta Avanzata</button>
+                <button id="reset-btn" class="btn reset" style="margin-top:10px;">🔄 Resetta Tutto</button>
             </div>
         </aside>
     </div>
